@@ -402,7 +402,7 @@ information:
 It should be noted that for more difficult simulations (e.g., light water
 reactors), there are other options available to users such as tally resetting
 parameters, effective down-scatter usage, tally estimator, etc. For more
-information please see :ref:`io_cmfd`.
+information please see the :class:`openmc.cmfd.CMFDRun` class.
 
 Of the options described above, the optional acceleration subset region is an
 uncommon feature. Because OpenMC only has a structured Cartesian mesh, mesh
@@ -538,7 +538,7 @@ Examples of CMFD simulations using OpenMC can be found in [HermanThesis]_.
    .. rubric:: References
 
 .. [BEAVRS] Nick Horelik, Bryan Herman. *Benchmark for Evaluation And Verification of Reactor
-            Simulations*. Massachusetts Institute of Technology, http://crpg.mit.edu/pub/beavrs
+            Simulations*. Massachusetts Institute of Technology, https://crpg.mit.edu/research/beavrs
             , 2013.
 
 .. [Gill] Daniel F. Gill. *Newton-Krylov methods for the solution of the k-eigenvalue problem in

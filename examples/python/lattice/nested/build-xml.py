@@ -39,9 +39,9 @@ left = openmc.XPlane(surface_id=1, x0=-2, name='left')
 right = openmc.XPlane(surface_id=2, x0=2, name='right')
 bottom = openmc.YPlane(surface_id=3, y0=-2, name='bottom')
 top = openmc.YPlane(surface_id=4, y0=2, name='top')
-fuel1 = openmc.ZCylinder(surface_id=5, x0=0, y0=0, R=0.4)
-fuel2 = openmc.ZCylinder(surface_id=6, x0=0, y0=0, R=0.3)
-fuel3 = openmc.ZCylinder(surface_id=7, x0=0, y0=0, R=0.2)
+fuel1 = openmc.ZCylinder(surface_id=5, x0=0, y0=0, r=0.4)
+fuel2 = openmc.ZCylinder(surface_id=6, x0=0, y0=0, r=0.3)
+fuel3 = openmc.ZCylinder(surface_id=7, x0=0, y0=0, r=0.2)
 
 left.boundary_type = 'vacuum'
 right.boundary_type = 'vacuum'
@@ -150,8 +150,7 @@ plot_file.export_to_xml()
 ###############################################################################
 
 # Instantiate a tally mesh
-mesh = openmc.Mesh(mesh_id=1)
-mesh.type = 'regular'
+mesh = openmc.RegularMesh(mesh_id=1)
 mesh.dimension = [4, 4]
 mesh.lower_left = [-2, -2]
 mesh.width = [1, 1]
@@ -164,6 +163,7 @@ tally = openmc.Tally(tally_id=1)
 tally.filters = [mesh_filter]
 tally.scores = ['total']
 
-# Instantiate a Tallies collection, register Tally/Mesh, and export to XML
+# Instantiate a Tallies collection, register Tally/RegularMesh, and export to
+# XML
 tallies_file = openmc.Tallies([tally])
 tallies_file.export_to_xml()

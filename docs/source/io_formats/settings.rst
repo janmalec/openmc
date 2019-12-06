@@ -89,6 +89,14 @@ you care. This element has the following attributes/sub-elements:
     *Default*: 0.0
 
 --------------------------------
+``<dagmc>`` Element
+--------------------------------
+
+When the DAGMC mode is enabled, the OpenMC geometry will be read from the file
+``dagmc.h5m``. If a :ref:`geometry.xml <io_geometry>` file is present with
+``dagmc`` set to ``true``, it will be ignored.
+
+--------------------------------
 ``<electron_treatment>`` Element
 --------------------------------
 
@@ -321,14 +329,13 @@ or sub-elements:
 
   :method:
 
-    Which resonance elastic scattering method is to be applied: "ares"
-    (accelerated resonance elastic scattering), "dbrc" (Doppler broadening
-    rejection correction), or "wcm" (weight correction method). Descriptions of
-    each of these methods are documented here_.
+    Which resonance elastic scattering method is to be applied: "rvs" (relative
+    velocity sampling) or "dbrc" (Doppler broadening rejection correction).
+    Descriptions of each of these methods are documented here_.
 
-    .. _here: http://dx.doi.org/10.1016/j.anucene.2014.01.017
+    .. _here: https://doi.org/10.1016/j.anucene.2017.12.044
 
-    *Default*: "ares"
+    *Default*: "rvs"
 
   :energy_min:
     The energy in eV above which the resonance elastic scattering method should
@@ -360,16 +367,6 @@ or sub-elements:
             (asymptotic) kernel is used above ``energy_max``.
 
   .. note:: This element is not used in the multi-group :ref:`energy_mode`.
-
-----------------------
-``<run_cmfd>`` Element
-----------------------
-
-The ``<run_cmfd>`` element indicates whether or not CMFD acceleration should be
-turned on or off. This element has no attributes or sub-elements and can be set
-to either "false" or "true".
-
-  *Default*: false
 
 ----------------------
 ``<run_mode>`` Element
@@ -426,12 +423,16 @@ attributes/sub-elements:
 
     :type:
       The type of spatial distribution. Valid options are "box", "fission",
-      "point", and "cartesian". A "box" spatial distribution has coordinates
-      sampled uniformly in a parallelepiped. A "fission" spatial distribution
-      samples locations from a "box" distribution but only locations in
-      fissionable materials are accepted. A "point" spatial distribution has
-      coordinates specified by a triplet. An "cartesian" spatial distribution
-      specifies independent distributions of x-, y-, and z-coordinates.
+      "point", "cartesian", and "spherical". A "box" spatial distribution has 
+      coordinates sampled uniformly in a parallelepiped. A "fission" spatial
+      distribution samples locations from a "box" distribution but only 
+      locations in fissionable materials are accepted. A "point" spatial 
+      distribution has coordinates specified by a triplet. An "cartesian" 
+      spatial distribution specifies independent distributions of x-, y-, and
+      z-coordinates. A "spherical" spatial distribution specifies independent
+      distributions of r-, theta-, and phi-coordinates where theta is the angle
+      with respect to the z-axis, phi is the azimuthal angle, and the sphere is
+      centered on the coordinate (x0,y0,z0).
 
       *Default*: None
 
@@ -448,6 +449,9 @@ attributes/sub-elements:
 
       For an "cartesian" distribution, no parameters are specified. Instead,
       the ``x``, ``y``, and ``z`` elements must be specified.
+
+      For a "spherical" distribution, no parameters are specified. Instead,
+      the ``r``, ``theta``, ``phi``, and ``origin`` elements must be specified.
 
       *Default*: None
 
@@ -468,6 +472,28 @@ attributes/sub-elements:
       of z-coordinates. The necessary sub-elements/attributes are those of a
       univariate probability distribution (see the description in
       :ref:`univariate`).
+
+    :r:
+      For a "spherical" distribution, this element specifies the distribution
+      of r-coordinates. The necessary sub-elements/attributes are those of a
+      univariate probability distribution (see the description in
+      :ref:`univariate`).
+
+    :theta:
+      For a "spherical" distribution, this element specifies the distribution
+      of theta-coordinates. The necessary sub-elements/attributes are those of a
+      univariate probability distribution (see the description in
+      :ref:`univariate`).
+
+    :phi:
+      For a "spherical" distribution, this element specifies the distribution
+      of phi-coordinates. The necessary sub-elements/attributes are those of a
+      univariate probability distribution (see the description in
+      :ref:`univariate`).
+
+    :origin:
+      For a "spherical" distribution, this element specifies the coordinates of
+      the center of the sphere.
 
   :angle:
     An element specifying the angular distribution of source sites. This element
@@ -732,15 +758,6 @@ temperature in the range of 325 K to 355 K will be used to evaluate cross
 sections.
 
   *Default*: 10 K
-
----------------------
-``<threads>`` Element
----------------------
-
-The ``<threads>`` element indicates the number of OpenMP threads to be used for
-a simulation. It has no attributes and accepts a positive integer value.
-
-  *Default*: None (Determined by environment variable :envvar:`OMP_NUM_THREADS`)
 
 .. _trace:
 

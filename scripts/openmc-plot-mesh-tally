@@ -11,8 +11,10 @@ import tkinter.font as font
 import tkinter.messagebox as messagebox
 import tkinter.ttk as ttk
 
+import matplotlib
+matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.backends.backend_tkagg import NavigationToolbar2TkAgg
+from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np
@@ -56,7 +58,7 @@ class MeshPlotter(tk.Frame):
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
         # Create the navigation toolbar, tied to the canvas
-        self.mpl_toolbar = NavigationToolbar2TkAgg(self.canvas, figureFrame)
+        self.mpl_toolbar = NavigationToolbar2Tk(self.canvas, figureFrame)
         self.mpl_toolbar.update()
         self.canvas._tkcanvas.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
@@ -174,8 +176,8 @@ class MeshPlotter(tk.Frame):
 
             # Set combobox items
             if filterType in ['Energy', 'Energyout']:
-                combobox['values'] = ['{0} to {1}'.format(*f.bins[i:i+2])
-                                      for i in range(len(f.bins) - 1)]
+                combobox['values'] = ['{} to {}'.format(*ebin)
+                                      for ebin in f.bins]
             else:
                 combobox['values'] = [str(i) for i in f.bins]
 
@@ -208,30 +210,46 @@ class MeshPlotter(tk.Frame):
                 continue
             elif f.short_name in ['Energy', 'Energyout']:
                 index = self.filterBoxes[f.short_name].current()
-                ebin = (f.bins[index], f.bins[index + 1])
+                ebin = f.bins[index]
                 spec_list.append((type(f), (ebin,)))
             else:
                 index = self.filterBoxes[f.short_name].current()
                 spec_list.append((type(f), (index,)))
 
+        dims = (self.nx, self.ny, self.nz)
+
         text = self.basisBox.get()
         if text == 'xy':
-            dims = (self.nx, self.ny)
+            h_ind = 0
+            v_ind = 1
         elif text == 'yz':
-            dims = (self.ny, self.nz)
+            h_ind = 1
+            v_ind = 2
         else:
-            dims = (self.nx, self.nz)
+            h_ind = 0
+            v_ind = 2
+
+        axial_ind = 3 - (h_ind + v_ind)
+        dims = (dims[h_ind], dims[v_ind])
+
+        mesh_dim = len(self.mesh.dimension)
+        if mesh_dim == 3:
+            mesh_indices = [0,0,0]
+        else:
+            mesh_indices = [0,0]
+
         matrix = np.zeros(dims)
         for i in range(dims[0]):
             for j in range(dims[1]):
-                if text == 'xy':
-                    meshtuple = (i + 1, j + 1, axial_level)
-                elif text == 'yz':
-                    meshtuple = (axial_level, i + 1, j + 1)
+                if mesh_dim == 3:
+                    mesh_indices[h_ind] = i + 1
+                    mesh_indices[v_ind] = j + 1
+                    mesh_indices[axial_ind] = axial_level
                 else:
-                    meshtuple = (i + 1, axial_level, j + 1)
+                    mesh_indices[0] = i + 1
+                    mesh_indices[1] = j + 1
                 filters, filter_bins = zip(*spec_list + [
-                    (type(mesh_filter), (meshtuple,))])
+                    (type(mesh_filter), (tuple(mesh_indices),))])
                 mean = selectedTally.get_values(
                     [self.scoreBox.get()], filters, filter_bins)
                 stdev = selectedTally.get_values(

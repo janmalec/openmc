@@ -11,10 +11,21 @@
 
 #include "openmc/distribution_multi.h"
 #include "openmc/distribution_spatial.h"
-#include "openmc/capi.h"
 #include "openmc/particle.h"
 
 namespace openmc {
+
+//==============================================================================
+// Global variables
+//==============================================================================
+
+class SourceDistribution;
+
+namespace model {
+
+extern std::vector<SourceDistribution> external_sources;
+
+} // namespace model
 
 //==============================================================================
 //! External source distribution
@@ -28,23 +39,17 @@ public:
 
   //! Sample from the external source distribution
   //! \return Sampled site
-  Bank sample() const;
+  Particle::Bank sample() const;
 
   // Properties
   double strength() const { return strength_; }
 private:
-  ParticleType particle_ {ParticleType::neutron}; //!< Type of particle emitted
+  Particle::Type particle_ {Particle::Type::neutron}; //!< Type of particle emitted
   double strength_ {1.0}; //!< Source strength
   UPtrSpace space_; //!< Spatial distribution
   UPtrAngle angle_; //!< Angular distribution
   UPtrDist energy_; //!< Energy distribution
 };
-
-//==============================================================================
-// Global variables
-//==============================================================================
-
-extern std::vector<SourceDistribution> external_sources;
 
 //==============================================================================
 // Functions
@@ -56,7 +61,12 @@ extern "C" void initialize_source();
 //! Sample a site from all external source distributions in proportion to their
 //! source strength
 //! \return Sampled source site
-extern "C" Bank sample_external_source();
+Particle::Bank sample_external_source();
+
+//! Fill source bank at end of generation for fixed source simulations
+void fill_source_bank_fixedsource();
+
+void free_memory_source();
 
 } // namespace openmc
 

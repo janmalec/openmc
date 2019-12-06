@@ -49,9 +49,9 @@ materials_file.export_to_xml()
 ###############################################################################
 
 # Instantiate ZCylinder surfaces
-fuel_or = openmc.ZCylinder(surface_id=1, x0=0, y0=0, R=0.39218, name='Fuel OR')
-clad_ir = openmc.ZCylinder(surface_id=2, x0=0, y0=0, R=0.40005, name='Clad IR')
-clad_or = openmc.ZCylinder(surface_id=3, x0=0, y0=0, R=0.45720, name='Clad OR')
+fuel_or = openmc.ZCylinder(surface_id=1, x0=0, y0=0, r=0.39218, name='Fuel OR')
+clad_ir = openmc.ZCylinder(surface_id=2, x0=0, y0=0, r=0.40005, name='Clad IR')
+clad_or = openmc.ZCylinder(surface_id=3, x0=0, y0=0, r=0.45720, name='Clad OR')
 left = openmc.XPlane(surface_id=4, x0=-0.62992, name='left')
 right = openmc.XPlane(surface_id=5, x0=0.62992, name='right')
 bottom = openmc.YPlane(surface_id=6, y0=-0.62992, name='bottom')
@@ -106,7 +106,7 @@ bounds = [-0.62992, -0.62992, -1, 0.62992, 0.62992, 1]
 uniform_dist = openmc.stats.Box(bounds[:3], bounds[3:], only_fissionable=True)
 settings_file.source = openmc.source.Source(space=uniform_dist)
 
-entropy_mesh = openmc.Mesh()
+entropy_mesh = openmc.RegularMesh()
 entropy_mesh.lower_left = [-0.39218, -0.39218, -1.e50]
 entropy_mesh.upper_right = [0.39218, 0.39218, 1.e50]
 entropy_mesh.dimension = [10, 10, 1]
@@ -119,8 +119,7 @@ settings_file.export_to_xml()
 ###############################################################################
 
 # Instantiate a tally mesh
-mesh = openmc.Mesh()
-mesh.type = 'regular'
+mesh = openmc.RegularMesh()
 mesh.dimension = [100, 100, 1]
 mesh.lower_left = [-0.62992, -0.62992, -1.e50]
 mesh.upper_right = [0.62992, 0.62992, 1.e50]

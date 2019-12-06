@@ -88,7 +88,7 @@ class Geometry(object):
         """
         # Create XML representation
         root_element = ET.Element("geometry")
-        self.root_universe.create_xml_subelement(root_element)
+        self.root_universe.create_xml_subelement(root_element, memo=set())
 
         # Sort the elements in the file
         root_element[:] = sorted(root_element, key=lambda x: (
@@ -97,9 +97,14 @@ class Geometry(object):
         # Clean the indentation in the file to be user-readable
         xml.clean_indentation(root_element)
 
+        # Check if path is a directory
+        p = Path(path)
+        if p.is_dir():
+            p /= 'geometry.xml'
+
         # Write the XML Tree to the geometry.xml file
         tree = ET.ElementTree(root_element)
-        tree.write(path, xml_declaration=True, encoding='utf-8')
+        tree.write(str(p), xml_declaration=True, encoding='utf-8')
 
     @classmethod
     def from_xml(cls, path='geometry.xml', materials=None):
@@ -267,9 +272,9 @@ class Geometry(object):
 
         """
         if self.root_universe is not None:
-            return self.root_universe.get_all_cells()
+            return self.root_universe.get_all_cells(memo=set())
         else:
-            return []
+            return OrderedDict()
 
     def get_all_universes(self):
         """Return all universes in the geometry.
@@ -296,7 +301,10 @@ class Geometry(object):
             instances
 
         """
-        return self.root_universe.get_all_materials()
+        if self.root_universe is not None:
+            return self.root_universe.get_all_materials(memo=set())
+        else:
+            return OrderedDict()
 
     def get_all_material_cells(self):
         """Return all cells filled by a material

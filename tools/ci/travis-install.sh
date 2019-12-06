@@ -9,11 +9,10 @@ if [[ $DAGMC = 'y' ]]; then
     ./tools/ci/travis-install-dagmc.sh
 fi
 
-# Upgrade pip before doing anything else
+# Upgrade pip, pytest, numpy before doing anything else
 pip install --upgrade pip
-
-# pytest installed by default -- make sure we get latest
 pip install --upgrade pytest
+pip install --upgrade numpy
 
 # Install mpi4py for MPI configurations
 if [[ $MPI == 'y' ]]; then
@@ -23,13 +22,11 @@ fi
 # Build and install OpenMC executable
 python tools/ci/travis-install.py
 
-if [[ $TRAVIS_PYTHON_VERSION == "3.7" ]]; then
-    # Install Python API in editable mode
-    pip install -e .[test]
-else
-    # Conditionally install vtk
-    pip install -e .[test,vtk]
-fi
+# Install Python API in editable mode
+pip install -e .[test,vtk]
 
-# For uploading to coveralls
+# For coverage testing of the C++ source files
+pip install cpp-coveralls
+
+# For coverage testing of the Python source files
 pip install coveralls

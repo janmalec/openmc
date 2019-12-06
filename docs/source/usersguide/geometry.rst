@@ -25,7 +25,7 @@ surface is a locus of zeros of a function of Cartesian coordinates
 
 Defining a surface alone is not sufficient to specify a volume -- in order to
 define an actual volume, one must reference the *half-space* of a surface. A
-surface half-space is the region whose points satisfy a positive of negative
+surface half-space is the region whose points satisfy a positive or negative
 inequality of the surface equation. For example, for a sphere of radius one
 centered at the origin, the surface equation is :math:`f(x,y,z) = x^2 + y^2 +
 z^2 - 1 = 0`. Thus, we say that the negative half-space of the sphere, is
@@ -88,7 +88,7 @@ parameters for a sphere are the :math:`x,y,z` coordinates of the center of the
 sphere and the radius of the sphere. All of these parameters can be set either
 as optional keyword arguments to the class constructor or via attributes::
 
-  sphere = openmc.Sphere(R=10.0)
+  sphere = openmc.Sphere(r=10.0)
 
   # This is equivalent
   sphere = openmc.Sphere()
@@ -98,7 +98,7 @@ Once a surface has been created, half-spaces can be obtained by applying the
 unary ``-`` or ``+`` operators, corresponding to the negative and positive
 half-spaces, respectively. For example::
 
-   >>> sphere = openmc.Sphere(R=10.0)
+   >>> sphere = openmc.Sphere(r=10.0)
    >>> inside_sphere = -sphere
    >>> outside_sphere = +sphere
    >>> type(inside_sphere)
@@ -121,11 +121,11 @@ For many regions, a bounding-box can be determined automatically::
 While a bounding box can be determined for regions involving half-spaces of
 spheres, cylinders, and axis-aligned planes, it generally cannot be determined
 if the region involves cones, non-axis-aligned planes, or other exotic
-second-order surfaces. For example, the :func:`openmc.get_hexagonal_prism`
+second-order surfaces. For example, the :func:`openmc.model.hexagonal_prism`
 function returns the interior region of a hexagonal prism; because it is bounded
 by a :class:`openmc.Plane`, trying to get its bounding box won't work::
 
-  >>> hex = openmc.get_hexagonal_prism()
+  >>> hex = openmc.model.hexagonal_prism()
   >>> hex.bounding_box
   (array([-0.8660254,       -inf,       -inf]),
    array([ 0.8660254,        inf,        inf]))
@@ -140,10 +140,10 @@ may want to specify different behavior for particles passing through a
 surface. To specify a vacuum boundary condition, simply change the
 :attr:`Surface.boundary_type` attribute to 'vacuum'::
 
-   outer_surface = openmc.Sphere(R=100.0, boundary_type='vacuum')
+   outer_surface = openmc.Sphere(r=100.0, boundary_type='vacuum')
 
    # This is equivalent
-   outer_surface = openmc.Sphere(R=100.0)
+   outer_surface = openmc.Sphere(r=100.0)
    outer_surface.boundary_type = 'vacuum'
 
 Reflective and periodic boundary conditions can be set with the strings
@@ -154,8 +154,8 @@ can be determined automatically. For non-axis-aligned planes, it is necessary to
 specify pairs explicitly using the :attr:`Surface.periodic_surface` attribute as
 in the following example::
 
-  p1 = openmc.Plane(A=0.3, B=5.0, D=1.0, boundary_type='periodic')
-  p2 = openmc.Plane(A=0.3, B=5.0, D=-1.0, boundary_type='periodic')
+  p1 = openmc.Plane(a=0.3, b=5.0, d=1.0, boundary_type='periodic')
+  p2 = openmc.Plane(a=0.3, b=5.0, d=-1.0, boundary_type='periodic')
   p1.periodic_surface = p2
 
 Rotationally-periodic boundary conditions can be specified for a pair of
@@ -374,7 +374,7 @@ code would work::
   hexlat.universes = [outer_ring, middle_ring, inner_ring]
 
 If you need to create a hexagonal boundary (composed of six planar surfaces) for
-a hexagonal lattice, :func:`openmc.get_hexagonal_prism` can be used.
+a hexagonal lattice, :func:`openmc.model.hexagonal_prism` can be used.
 
 .. _usersguide_geom_export:
 
@@ -396,5 +396,41 @@ if needed, lattices, the last step is to create an instance of
    geom.root_universe = root_univ
    geom.export_to_xml()
 
-.. _constructive solid geometry: http://en.wikipedia.org/wiki/Constructive_solid_geometry
-.. _quadratic surfaces: http://en.wikipedia.org/wiki/Quadric
+Note that it's not strictly required to manually create a root universe. You can
+also pass a list of cells to the :class:`openmc.Geometry` constructor and it
+will handle creating the unverse::
+
+   geom = openmc.Geometry([cell1, cell2, cell3])
+   geom.export_to_xml()
+
+.. _constructive solid geometry: https://en.wikipedia.org/wiki/Constructive_solid_geometry
+.. _quadratic surfaces: https://en.wikipedia.org/wiki/Quadric
+
+--------------------------
+Using CAD-based Geometry
+--------------------------
+
+OpenMC relies on the Direct Accelerated Geometry Monte Carlo toolkit (`DAGMC
+<https://svalinn.github.io/DAGMC/>`_) to represent CAD-based geometry in a
+surface mesh format. A DAGMC run can be enabled in OpenMC by setting the
+``dagmc`` property to ``True`` in the model Settings either via the Python
+:class:`openmc.settings` Python class::
+
+  settings = openmc.Settings()
+  settings.dagmc = True
+
+or in the :ref:`settings.xml <io_settings>` file::
+
+  <dagmc>true</dagmc>
+
+With ``dagmc`` set to true, OpenMC will load the DAGMC model (from a local file
+named ``dagmc.h5m``) when initializing a simulation. If a `geometry.xml
+<../io_formats/geometry.html>`_ is present as well, it will be ignored.
+
+  **Note:** DAGMC geometries used in OpenMC are currently required to be clean,
+  meaning that all surfaces have been `imprinted and merged
+  <https://svalinn.github.io/DAGMC/usersguide/trelis_workflow.html>`_
+  successfully and that the model is `watertight
+  <https://svalinn.github.io/DAGMC/usersguide/tools.html#make-watertight>`_. Future
+  implementations of DAGMC geometry will support small volume overlaps and
+  un-merged surfaces.

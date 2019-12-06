@@ -16,7 +16,6 @@ particles = 1000
 time_step = 1*24*60*60 # s
 final_time = 5*24*60*60 # s
 time_steps = np.full(final_time // time_step, time_step)
-
 chain_file = './chain_simple.xml'
 power = 174 # W/cm, for 2D simulations only (use W for 3D)
 
@@ -54,9 +53,9 @@ borated_water.add_s_alpha_beta('c_H_in_H2O')
 ###############################################################################
 
 # Instantiate ZCylinder surfaces
-fuel_or = openmc.ZCylinder(surface_id=1, x0=0, y0=0, R=0.39218, name='Fuel OR')
-clad_ir = openmc.ZCylinder(surface_id=2, x0=0, y0=0, R=0.40005, name='Clad IR')
-clad_or = openmc.ZCylinder(surface_id=3, x0=0, y0=0, R=0.45720, name='Clad OR')
+fuel_or = openmc.ZCylinder(surface_id=1, x0=0, y0=0, r=0.39218, name='Fuel OR')
+clad_ir = openmc.ZCylinder(surface_id=2, x0=0, y0=0, r=0.40005, name='Clad IR')
+clad_or = openmc.ZCylinder(surface_id=3, x0=0, y0=0, r=0.45720, name='Clad OR')
 left = openmc.XPlane(surface_id=4, x0=-0.62992, name='left')
 right = openmc.XPlane(surface_id=5, x0=0.62992, name='right')
 bottom = openmc.YPlane(surface_id=6, y0=-0.62992, name='bottom')
@@ -100,7 +99,7 @@ geometry = openmc.Geometry(root)
 
 # Compute cell areas
 area = {}
-area[fuel] = np.pi * fuel_or.coefficients['R'] ** 2
+area[fuel] = np.pi * fuel_or.coefficients['r'] ** 2
 
 # Set materials volume for depletion. Set to an area for 2D simulations
 uo2.volume = area[fuel]
@@ -120,7 +119,7 @@ bounds = [-0.62992, -0.62992, -1, 0.62992, 0.62992, 1]
 uniform_dist = openmc.stats.Box(bounds[:3], bounds[3:], only_fissionable=True)
 settings_file.source = openmc.source.Source(space=uniform_dist)
 
-entropy_mesh = openmc.Mesh()
+entropy_mesh = openmc.RegularMesh()
 entropy_mesh.lower_left = [-0.39218, -0.39218, -1.e50]
 entropy_mesh.upper_right = [0.39218, 0.39218, 1.e50]
 entropy_mesh.dimension = [10, 10, 1]
@@ -133,14 +132,15 @@ settings_file.entropy_mesh = entropy_mesh
 op = openmc.deplete.Operator(geometry, settings_file, chain_file)
 
 # Perform simulation using the predictor algorithm
-openmc.deplete.integrator.predictor(op, time_steps, power)
+integrator = openmc.deplete.PredictorIntegrator(op, time_steps, power)
+integrator.integrate()
 
 ###############################################################################
 #                    Read depletion calculation results
 ###############################################################################
 
 # Open results file
-results = openmc.deplete.ResultsList("depletion_results.h5")
+results = openmc.deplete.ResultsList.from_hdf5("depletion_results.h5")
 
 # Obtain K_eff as a function of time
 time, keff = results.get_eigenvalue()

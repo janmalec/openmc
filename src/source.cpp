@@ -5,6 +5,7 @@
 
 #include "xtensor/xadapt.hpp"
 
+#include "openmc/bank.h"
 #include "openmc/cell.h"
 #include "openmc/error.h"
 #include "openmc/file_utils.h"
@@ -27,7 +28,11 @@ namespace openmc {
 // Global variables
 //==============================================================================
 
+namespace model {
+
 std::vector<SourceDistribution> external_sources;
+
+}
 
 //==============================================================================
 // SourceDistribution implementation
@@ -42,9 +47,9 @@ SourceDistribution::SourceDistribution(pugi::xml_node node)
   if (check_for_node(node, "particle")) {
     auto temp_str = get_node_value(node, "particle", true, true);
     if (temp_str == "neutron") {
-      particle_ = ParticleType::neutron;
+      particle_ = Particle::Type::neutron;
     } else if (temp_str == "photon") {
-      particle_ = ParticleType::photon;
+      particle_ = Particle::Type::photon;
       settings::photon_transport = true;
     } else {
       fatal_error(std::string("Unknown source particle type: ") + temp_str);
@@ -81,6 +86,8 @@ SourceDistribution::SourceDistribution(pugi::xml_node node)
         type = get_node_value(node_space, "type", true, true);
       if (type == "cartesian") {
         space_ = UPtrSpace{new CartesianIndependent(node_space)};
+      } else if (type == "spherical") {
+        space_ = UPtrSpace{new SphericalIndependent(node_space)};
       } else if (type == "box") {
         space_ = UPtrSpace{new SpatialBox(node_space)};
       } else if (type == "fission") {
@@ -135,9 +142,9 @@ SourceDistribution::SourceDistribution(pugi::xml_node node)
 }
 
 
-Bank SourceDistribution::sample() const
+Particle::Bank SourceDistribution::sample() const
 {
-  Bank site;
+  Particle::Bank site;
 
   // Set weight to one by default
   site.wgt = 1.0;
@@ -148,17 +155,15 @@ Bank SourceDistribution::sample() const
   static int n_accept = 0;
   while (!found) {
     // Set particle type
-    site.particle = static_cast<int>(particle_);
+    site.particle = particle_;
 
     // Sample spatial distribution
-    Position r = space_->sample();
-    site.xyz[0] = r.x;
-    site.xyz[1] = r.y;
-    site.xyz[2] = r.z;
+    site.r = space_->sample();
+    double xyz[] {site.r.x, site.r.y, site.r.z};
 
     // Now search to see if location exists in geometry
     int32_t cell_index, instance;
-    int err = openmc_find_cell(site.xyz, &cell_index, &instance);
+    int err = openmc_find_cell(xyz, &cell_index, &instance);
     found = (err != OPENMC_E_GEOMETRY);
 
     // Check if spatial site is in fissionable material
@@ -167,16 +172,14 @@ Bank SourceDistribution::sample() const
       if (space_box) {
         if (space_box->only_fissionable()) {
           // Determine material
-          auto c = cells[cell_index - 1];
-          int32_t mat_index = c->material_[instance];
-          auto m = materials[mat_index];
+          const auto& c = model::cells[cell_index];
+          auto mat_index = c->material_.size() == 1
+            ? c->material_[0] : c->material_[instance];
 
           if (mat_index == MATERIAL_VOID) {
             found = false;
           } else {
-            bool fissionable;
-            openmc_material_get_fissionable(mat_index + 1, &fissionable);
-            if (!fissionable) found = false;
+            if (!model::materials[mat_index]->fissionable_) found = false;
           }
         }
       }
@@ -197,20 +200,17 @@ Bank SourceDistribution::sample() const
   ++n_accept;
 
   // Sample angle
-  Direction u = angle_->sample();
-  site.uvw[0] = u.x;
-  site.uvw[1] = u.y;
-  site.uvw[2] = u.z;
+  site.u = angle_->sample();
 
   // Check for monoenergetic source above maximum particle energy
   auto p = static_cast<int>(particle_);
   auto energy_ptr = dynamic_cast<Discrete*>(energy_.get());
   if (energy_ptr) {
     auto energies = xt::adapt(energy_ptr->x());
-    if (xt::any(energies > energy_max[p-1])) {
+    if (xt::any(energies > data::energy_max[p])) {
       fatal_error("Source energy above range of energies of at least "
                   "one cross section table");
-    } else if (xt::any(energies < energy_min[p-1])) {
+    } else if (xt::any(energies < data::energy_min[p])) {
       fatal_error("Source energy below range of energies of at least "
                   "one cross section table");
     }
@@ -221,7 +221,7 @@ Bank SourceDistribution::sample() const
     site.E = energy_->sample();
 
     // Resample if energy falls outside minimum or maximum particle energy
-    if (site.E < energy_max[p-1] && site.E > energy_min[p-1]) break;
+    if (site.E < data::energy_max[p] && site.E > data::energy_min[p]) break;
   }
 
   // Set delayed group
@@ -237,11 +237,6 @@ Bank SourceDistribution::sample() const
 void initialize_source()
 {
   write_message("Initializing source particles...", 5);
-
-  // Get pointer to source bank
-  Bank* source_bank;
-  int64_t n;
-  openmc_source_bank(&source_bank, &n);
 
   if (settings::path_source != "") {
     // Read the source from a binary file instead of sampling from some
@@ -264,21 +259,21 @@ void initialize_source()
     }
 
     // Read in the source bank
-    read_source_bank(file_id, work_index.data(), source_bank);
+    read_source_bank(file_id);
 
     // Close file
     file_close(file_id);
 
   } else {
     // Generation source sites from specified distribution in user input
-    for (int64_t i = 0; i < openmc_work; ++i) {
+    for (int64_t i = 0; i < simulation::work_per_rank; ++i) {
       // initialize random number seed
-      int64_t id = openmc_total_gen*settings::n_particles +
-        work_index[openmc::mpi::rank] + i + 1;
+      int64_t id = simulation::total_gen*settings::n_particles +
+        simulation::work_index[mpi::rank] + i + 1;
       set_particle_seed(id);
 
       // sample external source distribution
-      source_bank[i] = sample_external_source();
+      simulation::source_bank[i] = sample_external_source();
     }
   }
 
@@ -287,45 +282,40 @@ void initialize_source()
     write_message("Writing out initial source...", 5);
     std::string filename = settings::path_output + "initial_source.h5";
     hid_t file_id = file_open(filename, 'w', true);
-    write_source_bank(file_id, work_index.data(), source_bank);
+    write_source_bank(file_id);
     file_close(file_id);
   }
 }
 
-extern "C" double* rev_energy_bins_ptr();
-
-Bank sample_external_source()
+Particle::Bank sample_external_source()
 {
   // Set the random number generator to the source stream.
   prn_set_stream(STREAM_SOURCE);
 
   // Determine total source strength
   double total_strength = 0.0;
-  for (auto& s : external_sources)
+  for (auto& s : model::external_sources)
     total_strength += s.strength();
 
   // Sample from among multiple source distributions
   int i = 0;
-  if (external_sources.size() > 1) {
+  if (model::external_sources.size() > 1) {
     double xi = prn()*total_strength;
     double c = 0.0;
-    for (; i < external_sources.size(); ++i) {
-      c += external_sources[i].strength();
+    for (; i < model::external_sources.size(); ++i) {
+      c += model::external_sources[i].strength();
       if (xi < c) break;
     }
   }
 
   // Sample source site from i-th source distribution
-  Bank site {external_sources[i].sample()};
+  Particle::Bank site {model::external_sources[i].sample()};
 
-  // If running in MG, convert site % E to group
+  // If running in MG, convert site.E to group
   if (!settings::run_CE) {
-    // Get pointer to rev_energy_bins array on Fortran side
-    double* rev_energy_bins = rev_energy_bins_ptr();
-
-    int n = num_energy_groups + 1;
-    site.E = lower_bound_index(rev_energy_bins, rev_energy_bins + n, site.E);
-    site.E = num_energy_groups - site.E;
+    site.E = lower_bound_index(data::mg.rev_energy_bins_.begin(),
+      data::mg.rev_energy_bins_.end(), site.E);
+    site.E = data::mg.num_energy_groups_ - site.E - 1.;
   }
 
   // Set the random number generator back to the tracking stream.
@@ -334,44 +324,22 @@ Bank sample_external_source()
   return site;
 }
 
-//==============================================================================
-// Fortran compatibility functions
-//==============================================================================
-
-extern "C" void free_memory_source()
+void free_memory_source()
 {
-  external_sources.clear();
+  model::external_sources.clear();
 }
 
-extern "C" double total_source_strength()
-{
-  double strength = 0.0;
-  for (const auto& s : external_sources) {
-    strength += s.strength();
-  }
-  return strength;
-}
-
-// Needed in fill_source_bank_fixedsource
-extern "C" int overall_generation();
-
-//! Fill source bank at end of generation for fixed source simulations
-extern "C" void fill_source_bank_fixedsource()
+void fill_source_bank_fixedsource()
 {
   if (settings::path_source.empty()) {
-    // Get pointer to source bank
-    Bank* source_bank;
-    int64_t n;
-    openmc_source_bank(&source_bank, &n);
-
-    for (int64_t i = 0; i < openmc_work; ++i) {
+    for (int64_t i = 0; i < simulation::work_per_rank; ++i) {
       // initialize random number seed
-      int64_t id = (openmc_total_gen + overall_generation()) *
-        settings::n_particles + work_index[openmc::mpi::rank] + i + 1;
+      int64_t id = (simulation::total_gen + overall_generation()) *
+        settings::n_particles + simulation::work_index[mpi::rank] + i + 1;
       set_particle_seed(id);
 
       // sample external source distribution
-      source_bank[i] = sample_external_source();
+      simulation::source_bank[i] = sample_external_source();
     }
   }
 }

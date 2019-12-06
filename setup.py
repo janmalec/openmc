@@ -31,15 +31,21 @@ kwargs = {
 
     # Data files and librarries
     'package_data': {
-        'openmc.capi': ['libopenmc.{}'.format(suffix)],
-        'openmc.data': ['mass.mas12', 'BREMX.DAT', '*.h5']
+        'openmc.lib': ['libopenmc.{}'.format(suffix)],
+        'openmc.data': ['mass16.txt', 'BREMX.DAT', '*.h5']
     },
 
     # Metadata
     'author': 'The OpenMC Development Team',
     'author_email': 'openmc-dev@googlegroups.com',
     'description': 'OpenMC',
-    'url': 'https://github.com/openmc-dev/openmc',
+    'url': 'https://openmc.org',
+    'download_url': 'https://github.com/openmc-dev/openmc/releases',
+    'project_urls': {
+        'Issue Tracker': 'https://github.com/openmc-dev/openmc/issues',
+        'Documentation': 'https://openmc.readthedocs.io',
+        'Source Code': 'https://github.com/openmc-dev/openmc',
+    },
     'classifiers': [
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
@@ -48,6 +54,7 @@ kwargs = {
         'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
         'Topic :: Scientific/Engineering'
+        'Programming Language :: C++',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
@@ -55,23 +62,22 @@ kwargs = {
         'Programming Language :: Python :: 3.7',
     ],
 
-    # Required dependencies
+    # Dependencies
+    'python_requires': '>=3.4',
     'install_requires': [
         'numpy>=1.9', 'h5py', 'scipy', 'ipython', 'matplotlib',
         'pandas', 'lxml', 'uncertainties'
     ],
-
-    # Optional dependencies
     'extras_require': {
-        'test': ['pytest', 'pytest-cov'],
+        'test': ['pytest', 'pytest-cov', 'colorama'],
         'vtk': ['vtk'],
     },
 }
 
-# If Cython is present, add resonance reconstruction capability
+# If Cython is present, add resonance reconstruction and fast float_endf
 if have_cython:
     kwargs.update({
-        'ext_modules': cythonize('openmc/data/reconstruct.pyx'),
+        'ext_modules': cythonize('openmc/data/*.pyx'),
         'include_dirs': [np.get_include()]
     })
 

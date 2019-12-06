@@ -3,6 +3,7 @@
 #include <array>
 #include <cstring>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 #include "xtensor/xtensor.hpp"
@@ -47,6 +48,8 @@ get_shape(hid_t obj_id, hsize_t* dims)
     dspace = H5Dget_space(obj_id);
   } else if (type == H5I_ATTR) {
     dspace = H5Aget_space(obj_id);
+  } else {
+    throw std::runtime_error{"Expected dataset or attribute in call to get_shape."};
   }
   H5Sget_simple_extent_dims(dspace, dims, nullptr);
   H5Sclose(dspace);
@@ -70,6 +73,8 @@ std::vector<hsize_t> object_shape(hid_t obj_id)
     dspace = H5Dget_space(obj_id);
   } else if (type == H5I_ATTR) {
     dspace = H5Aget_space(obj_id);
+  } else {
+    throw std::runtime_error{"Expected dataset or attribute in call to object_shape."};
   }
   int n = H5Sget_simple_extent_ndims(dspace);
 
@@ -138,23 +143,34 @@ dataset_ndims(hid_t dset)
 
 
 size_t
-dataset_typesize(hid_t dset)
+dataset_typesize(hid_t obj_id, const char* name)
 {
+  hid_t dset = open_dataset(obj_id, name);
   hid_t filetype = H5Dget_type(dset);
   size_t n = H5Tget_size(filetype);
   H5Tclose(filetype);
+  close_dataset(dset);
   return n;
 }
 
 
 void
-ensure_exists(hid_t group_id, const char* name)
+ensure_exists(hid_t obj_id, const char* name, bool attribute)
 {
-  if (!object_exists(group_id, name)) {
-    std::stringstream err_msg;
-    err_msg << "Object \"" << name << "\" does not exist in group "
-            << object_name(group_id);
-    fatal_error(err_msg);
+  if (attribute) {
+    if (!attribute_exists(obj_id, name)) {
+      std::stringstream err_msg;
+      err_msg << "Attribute \"" << name << "\" does not exist in object "
+              << object_name(obj_id);
+      fatal_error(err_msg);
+    }
+  } else {
+    if (!object_exists(obj_id, name)) {
+      std::stringstream err_msg;
+      err_msg << "Object \"" << name << "\" does not exist in object "
+              << object_name(obj_id);
+      fatal_error(err_msg);
+    }
   }
 }
 
@@ -350,10 +366,11 @@ member_names(hid_t group_id, H5O_type_t type)
                                   i, nullptr, 0, H5P_DEFAULT);
 
     // Read name
-    char buffer[size];
+    char* buffer = new char[size];
     H5Lget_name_by_idx(group_id, ".", H5_INDEX_NAME, H5_ITER_INC, i,
                        buffer, size, H5P_DEFAULT);
-    names.emplace_back(&buffer[0], size);
+    names.emplace_back(&buffer[0]);
+    delete[] buffer;
   }
   return names;
 }
@@ -388,11 +405,13 @@ object_name(hid_t obj_id)
 {
   // Determine size and create buffer
   size_t size = 1 + H5Iget_name(obj_id, nullptr, 0);
-  char buffer[size];
+  char* buffer = new char[size];
 
   // Read and return name
   H5Iget_name(obj_id, buffer, size);
-  return buffer;
+  std::string str = buffer;
+  delete[] buffer;
+  return str;
 }
 
 
@@ -476,6 +495,25 @@ read_dataset(hid_t obj_id, const char* name, hid_t mem_type_id,
   }
 
   if (name) H5Dclose(dset);
+}
+
+template<>
+void read_dataset(hid_t dset, xt::xarray<std::complex<double>>& arr, bool indep)
+{
+  // Get shape of dataset
+  std::vector<hsize_t> shape = object_shape(dset);
+
+  // Allocate new array to read data into
+  std::size_t size = 1;
+  for (const auto x : shape)
+    size *= x;
+  std::vector<std::complex<double>> buffer(size);
+
+  // Read data from attribute
+  read_complex(dset, nullptr, buffer.data(), indep);
+
+  // Adapt into xarray
+  arr = xt::adapt(buffer, shape);
 }
 
 
@@ -748,9 +786,13 @@ using_mpio_device(hid_t obj_id)
 
 // Specializations of the H5TypeMap template struct
 template<>
+const hid_t H5TypeMap<bool>::type_id = H5T_NATIVE_INT8;
+template<>
 const hid_t H5TypeMap<int>::type_id = H5T_NATIVE_INT;
 template<>
 const hid_t H5TypeMap<unsigned long>::type_id = H5T_NATIVE_ULONG;
+template<>
+const hid_t H5TypeMap<unsigned long long>::type_id = H5T_NATIVE_ULLONG;
 template<>
 const hid_t H5TypeMap<unsigned int>::type_id = H5T_NATIVE_UINT;
 template<>

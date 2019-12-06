@@ -57,9 +57,23 @@ Benchmarking
 Coupling and Multi-physics
 --------------------------
 
+- Miriam A. Kreher, Benoit Forget, and Kord Smith, "Single-Batch Monte Carlo
+  Multiphysics Coupling," *Proc. M&C*, 1789-1797, Portland, Oregon, Aug. 25-29
+  (2019).
+
+- Ze-Long Zhao, Yongwei Yang, and Shuang Hong, "`Application of FLUKA and OpenMC
+  in coupled physics calculation of target and subcritical reactor for ADS
+  <https://doi.org/10.1007/s41365-018-0539-1>`_," *Nucl. Sci. Tech.*, **30**: 10
+  (2019).
+
+- April Novak, Paul Romano, Brycen Wendt, Ron Rahaman, Elia Merzari, Leslie
+  Kerby, Cody Permann, Richard Martineau, and Rachel N. Slaybaugh, "Preliminary
+  Coupling of OpenMC and Nek5000 within the MOOSE Framework," *Proc. PHYSOR*,
+  Cancun, Mexico, Apr. 22-26 (2018).
+
 - Jun Chen, Liangzhi Cao, Chuanqi Zhao, and Zhouyu Liu, "`Development of
   Subchannel Code SUBSC for high-fidelity multi-physics coupling application
-  <https://doi.org/10.1016/j.egypro.2017.08.121>`_", Energy Procedia, **127**,
+  <https://doi.org/10.1016/j.egypro.2017.08.121>`_", *Energy Procedia*, **127**,
   264-274 (2017).
 
 - Tianliang Hu, Liangzhu Cao, Hongchun Wu, Xianan Du, and Mingtao He, "`Coupled
@@ -103,6 +117,10 @@ Coupling and Multi-physics
 Geometry and Visualization
 --------------------------
 
+- Sterling Harper, Paul Romano, Benoit Forget, and Kord Smith, "Efficient
+  dynamic threadsafe neighbor lists for Monte Carlo ray tracing," *Proc. M&C*,
+  918-926, Portland, Oregon, Aug. 25-29 (2019).
+
 - Jin-Yang Li, Long Gu, Hu-Shan Xu, Nadezha Korepanova, Rui Yu, Yan-Lei Zhu, and
   Chang-Ping Qin, "`CAD modeling study on FLUKA and OpenMC for accelerator
   driven system simulation <https://doi.org/10.1016/j.anucene.2017.12.050>`_",
@@ -123,6 +141,36 @@ Geometry and Visualization
 -------------
 Miscellaneous
 -------------
+
+- Govatsa Acharya, "`Investigating the Application of Self-Actuated Passive
+  Shutdown System in a Small Lead-Cooled Reactor
+  <https://doi.org/10.13140/RG.2.2.26088.01281>`_," M.S. Thesis, KTH Royal
+  Institute of Technology (2019).
+
+- Shikhar Kumar, Benoit Forget, and Kord Smith, "Analysis of fission source
+  convergence for a 3-D SMR core using functional expansion tallies," *Proc.
+  M&C*, 937-947, Portland, Oregon, Aug. 25-29 (2019).
+
+- Faisal Qayyum, Muhammad R. Ali, Awais Zahur, and R. Khan, "`Improvements in
+  methodology to determine feedback reactivity coefficients
+  <https://doi.org/10.1007/s41365-019-0588-0>`_," *Nucl. Sci. Tech.*, **30**: 63
+  (2019).
+
+- M. Sajjad, Muhammad Rizwan Ali, M. Naveed Ashraf, Rustam Khan, Tasneem Fatima,
+  "`KANUPP Reactor Core Model and its Validation
+  <https://doi.org/10.1109/PGSRET.2018.8685948>`_," International Conference on
+  Power Generation Systems and Renewable Energy Technologies, Islamabad,
+  Pakistan, Sep. 10-12 (2018).
+
+- Muhammad Waqas Tariq, Muhammad Sohail, and Sikander Majid Mirza, "`Calculation
+  of Neutronic Parameters using OpenMC for Potential Dispersed Fuels of MNSR
+  <https://doi.org/10.1109/PGSRET.2018.8685927>`_," International Conference on
+  Power Generation Systems and Renewable Energy Technologies, Islamabad,
+  Pakistan, Sep. 10-12 (2018).
+
+- Amanda L. Lund and Paul K. Romano, "`Implementation and Validation of Photon
+  Transport in OpenMC <https://doi.org/10.2172/1490825>`_", Argonne National
+  Laboratory, Technical Report ANL/MCS-TM-381 (2018).
 
 - Bruno Merk, Dzianis Litskevich, R. Gregg, and A. R. Mount, "`Demand driven
   salt clean-up in a molten salt fast reactor -- Defining a priority list
@@ -182,9 +230,28 @@ Miscellaneous
   Reaction Rate Kernel Density Estimators in OpenMC," *Trans. Am. Nucl. Soc.*,
   **109**, 683-686 (2013).
 
-------------------------------------
-Multi-group Cross Section Generation
-------------------------------------
+-----------------------------------
+Multigroup Cross Section Generation
+-----------------------------------
+
+- William Boyd, Adam Nelson, Paul K. Romano, Samuel Shaner, Benoit Forget, and
+  Kord Smith, "`Multigroup Cross-Section Generation with the OpenMC Monte Carlo
+  Particle Transport Code <https://doi.org/10.1080/00295450.2019.1571828>`_,"
+  *Nucl. Technol.* (2019).
+
+- William Boyd, Benoit Forget, and Kord Smith, "`A single-step framework to
+  generate spatially self-shielded multi-group cross sections from Monte Carlo
+  transport simulations <https://doi.org/10.1016/j.anucene.2018.11.017>`_,"
+  *Ann. Nucl. Energy*, **125**, 261-271 (2019).
+
+- Kun Zhuang, Xiaobin Tang, and Liangzhi Cao, "`Development and verification of
+  a model for generation of MSFR few-group homogenized cross-sections based on a
+  Monte Carlo code OpenMC <https://doi.org/10.1016/j.anucene.2018.09.037>`_,"
+  *Ann. Nucl. Energy*, **124**, 187-197 (2019).
+
+- Changho Lee and Yeon Sang Jung, "Verification of the Cross Section Library
+  Generated Using OpenMC and MC\ :sup:`2`-3 for PROTEUS," *Proc. PHYSOR*, Cancun,
+  Mexico, Apr. 22-26 (2018).
 
 - Zhaoyuan Liu, Kord Smith, Benoit Forget, and Javier Ortensi, "`Cumulative
   migration method for computing rigorous diffusion coefficients and transport
@@ -253,6 +320,11 @@ Multi-group Cross Section Generation
 Doppler Broadening
 ------------------
 
+- Jonathan A. Walsh, Benoit Forget, Kord S. Smith, and Forrest B. Brown,
+  "`On-the-fly Doppler broadening of unresolved resonance region cross sections
+  <https://doi.org/10.1016/j.pnucene.2017.05.032>`_," *Prog. Nucl. Energy*,
+  **101**, 444-460 (2017).
+
 - Colin Josey, Pablo Ducru, Benoit Forget, and Kord Smith, "`Windowed multipole
   for cross section Doppler broadening
   <https://doi.org/10.1016/j.jcp.2015.08.013>`_," *J. Comput. Phys.*, **307**,
@@ -262,6 +334,12 @@ Doppler Broadening
   "On-the-fly Doppler Broadening of Unresolved Resonance Region Cross Sections
   via Probability Band Interpolation," *Proc. PHYSOR*, Sun Valley, Idaho, May
   1-5, 2016.
+
+- Jonathan A. Walsh, Benoit Forget, Kord S. Smith, Brian C. Kiedrowski, and
+  Forrest B. Brown, "`Direct, on-the-fly calculation of unresolved resonance
+  region cross sections in Monte Carlo simulations
+  <http://hdl.handle.net/1721.1/108644>`_," *Proc. Joint Int. Conf. M&C+SNA+MC*,
+  Nashville, Tennessee, Apr. 19--23 (2015).
 
 - Colin Josey, Benoit Forget, and Kord Smith, "`Windowed multipole sensitivity
   to target accuracy of the optimization procedure
@@ -293,7 +371,7 @@ Nuclear Data
 - Jonathan A. Walsh, Benoit Forget, Kord S. Smith, and Forrest B. Brown,
   "`Uncertainty in Fast Reactor-Relevant Critical Benchmark Simulations Due to
   Unresolved Resonance Structure
-  <https://www.kns.org/paper_file/paper/MC2017_2017_3/P197S03-09WalshJ.pdf>`_,"
+  <https://www.kns.org/files/int_paper/paper/MC2017_2017_3/P197S03-09WalshJ.pdf>`_,"
   *Proc. Int. Conf. Mathematics & Computational Methods Applied to Nuclear
   Science and Engineering*, Jeju, Korea, Apr. 16-20, 2017.
 
@@ -316,11 +394,6 @@ Nuclear Data
   <https://doi.org/10.1016/j.cpc.2015.05.025>`_", *Comput. Phys. Commun.*,
   **196**, 134-142 (2015).
 
-- Jonathan A. Walsh, Benoit Forget, Kord S. Smith, Brian C. Kiedrowski, and
-  Forrest B. Brown, "Direct, on-the-fly calculation of unresolved resonance
-  region cross sections in Monte Carlo simulations," *Proc. Joint
-  Int. Conf. M&C+SNA+MC*, Nashville, Tennessee, Apr. 19--23 (2015).
-
 - Amanda L. Lund, Andrew R. Siegel, Benoit Forget, Colin Josey, and
   Paul K. Romano, "Using fractional cascading to accelerate cross section
   lookups in Monte Carlo particle transport calculations," *Proc. Joint
@@ -341,7 +414,7 @@ Parallelism
 
 - Paul K. Romano and Andrew R. Siegel, "`Limits on the efficiency of event-based
   algorithms for Monte Carlo neutron transport
-  <https://www.kns.org/paper_file/paper/MC2017_2017_2/P099S02-02RomanoP.pdf>`_,"
+  <https://www.kns.org/files/int_paper/paper/MC2017_2017_2/P099S02-02RomanoP.pdf>`_,"
   *Proc. Int. Conf. Mathematics & Computational Methods Applied to Nuclear
   Science and Engineering*, Jeju, Korea, Apr. 16-20, 2017.
 
@@ -431,6 +504,15 @@ Parallelism
 Depletion
 ---------
 
+- Jose L. Salcedo-Perez, Benoit Forget, Kord Smith, and Paul Romano, "Hybrid
+  tallies to improve performance in depletion Monte Carlo simulations," *Proc.
+  M&C*, 927-936, Portland, Oregon, Aug. 25-29 (2019).
+
+- Zhao-Qing Liu, Ze-Long Zhao, Yong-Wei Yang, Yu-Cui Gao, Hai-Yan Meng, and
+  Qing-Yu Gao, "`Development and validation of depletion code system IMPC-Burnup
+  for ADS <https://doi.org/10.1007/s41365-019-0560-z>`_," *Nucl. Sci. Tech.*,
+  **30**: 44 (2019).
+
 - Colin Josey, Benoit Forget, and Kord Smith, "`High order methods for the
   integration of the Bateman equations and other problems of the form of y' =
   F(y,t)y <https://doi.org/10.1016/j.jcp.2017.08.025>`_," *J. Comput. Phys.*,
@@ -449,3 +531,25 @@ Depletion
 - Kai Huang, Hongchun Wu, Yunzhao Li, and Liangzhi Cao, "Generalized depletion
   chain simplification based of significance analysis," *Proc. PHYSOR*, Sun
   Valley, Idaho, May 1-5, 2016.
+
+--------------------
+Sensitivity Analysis
+--------------------
+
+- Abdulla Alhajri and Benoit Forget, "Eigenvalue Sensitivity in Monte Carlo
+  Simulations to Nuclear Data Parameters using the Multipole Formalism," *Proc.
+  M&C*, 1895-1906, Portland, Oregon, Aug. 25-29 (2019).
+
+- Xingjie Peng, Jingang Liang, Benoit Forget, and Kord Smith, "`Calculation of
+  adjoint-weighted reactor kinetics parameters in OpenMC
+  <https://doi.org/10.1016/j.anucene.2019.01.007>`_", *Ann. Nucl. Energy*,
+  **128**, 231-235 (2019).
+
+- Zeyun Wu, Jingang Liang, Xingjie Peng, and Hany S. Abdel-Khalik, "`GPT-Free
+  Sensitivity Analysis for Monte Carlo Models
+  <https://doi.org/10.1080/00295450.2018.1556062>`_", *Nucl. Technol.* (2019).
+
+- Xingjie Peng, Jingang Liang, Abdulla Alhajri, Benoit Forget, and Kord Smith,
+  "`Development of continuous-energy sensitivity analysis capability in OpenMC
+  <https://doi.org/10.1016/j.anucene.2017.06.061>`_", *Ann. Nucl. Energy*,
+  **110**, 362-383 (2017).

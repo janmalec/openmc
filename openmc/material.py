@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from copy import deepcopy
 from numbers import Real, Integral
+from pathlib import Path
 import warnings
 from xml.etree import ElementTree as ET
 
@@ -276,20 +277,22 @@ class Material(IDManagerMixin):
         """
         mat_id = int(group.name.split('/')[-1].lstrip('material '))
 
-        name = group['name'].value.decode() if 'name' in group else ''
-        density = group['atom_density'].value
+        name = group['name'][()].decode() if 'name' in group else ''
+        density = group['atom_density'][()]
         if 'nuclide_densities' in group:
-            nuc_densities = group['nuclide_densities'][...]
+            nuc_densities = group['nuclide_densities'][()]
 
         # Create the Material
         material = cls(mat_id, name)
         material.depletable = bool(group.attrs['depletable'])
         if 'volume' in group.attrs:
             material.volume = group.attrs['volume']
+        if "temperature" in group.attrs:
+            material.temperature = group.attrs["temperature"]
 
         # Read the names of the S(a,b) tables for this Material and add them
         if 'sab_names' in group:
-            sab_tables = group['sab_names'].value
+            sab_tables = group['sab_names'][()]
             for sab_table in sab_tables:
                 name = sab_table.decode()
                 material.add_s_alpha_beta(name)
@@ -298,13 +301,13 @@ class Material(IDManagerMixin):
         material.set_density(density=density, units='atom/b-cm')
 
         if 'nuclides' in group:
-            nuclides = group['nuclides'].value
+            nuclides = group['nuclides'][()]
             # Add all nuclides to the Material
             for fullname, density in zip(nuclides, nuc_densities):
                 name = fullname.decode().strip()
                 material.add_nuclide(name, percent=density, percent_type='ao')
         if 'macroscopics' in group:
-            macroscopics = group['macroscopics'].value
+            macroscopics = group['macroscopics'][()]
             # Add all macroscopics to the Material
             for fullname in macroscopics:
                 name = fullname.decode().strip()
@@ -719,9 +722,9 @@ class Material(IDManagerMixin):
         """
         mass_density = 0.0
         for nuc, atoms_per_cc in self.get_nuclide_atom_densities().values():
-            density_i = 1e24 * atoms_per_cc * openmc.data.atomic_mass(nuc) \
-                        / openmc.data.AVOGADRO
             if nuclide is None or nuclide == nuc:
+                density_i = 1e24 * atoms_per_cc * openmc.data.atomic_mass(nuc) \
+                            / openmc.data.AVOGADRO
                 mass_density += density_i
         return mass_density
 
@@ -840,8 +843,7 @@ class Material(IDManagerMixin):
 
         # Create temperature XML subelement
         if self.temperature is not None:
-            subelement = ET.SubElement(element, "temperature")
-            subelement.text = str(self.temperature)
+            element.set("temperature", str(self.temperature))
 
         # Create density XML subelement
         if self._density is not None or self._density_units == 'sum':
@@ -930,7 +932,12 @@ class Material(IDManagerMixin):
         mat_id = int(elem.get('id'))
         mat = cls(mat_id)
         mat.name = elem.get('name')
-        mat.temperature = elem.get('temperature')
+
+        if "temperature" in elem.attrib:
+            mat.temperature = float(elem.get("temperature"))
+
+        if 'volume' in elem.attrib:
+            mat.volume = float(elem.get('volume'))
         mat.depletable = bool(elem.get('depletable'))
 
         # Get each nuclide
@@ -989,18 +996,12 @@ class Materials(cv.CheckedList):
         continuous-energy calculations and
         :envvar:`OPENMC_MG_CROSS_SECTIONS` will be used for multi-group
         calculations to find the path to the HDF5 cross section file.
-    multipole_library : str
-        Indicates the path to a directory containing a windowed multipole
-        cross section library. If it is not set, the
-        :envvar:`OPENMC_MULTIPOLE_LIBRARY` environment variable will be used. A
-        multipole library is optional.
 
     """
 
     def __init__(self, materials=None):
         super().__init__(Material, 'materials collection')
         self._cross_sections = None
-        self._multipole_library = None
 
         if materials is not None:
             self += materials
@@ -1009,19 +1010,10 @@ class Materials(cv.CheckedList):
     def cross_sections(self):
         return self._cross_sections
 
-    @property
-    def multipole_library(self):
-        return self._multipole_library
-
     @cross_sections.setter
     def cross_sections(self, cross_sections):
         cv.check_type('cross sections', cross_sections, str)
         self._cross_sections = cross_sections
-
-    @multipole_library.setter
-    def multipole_library(self, multipole_library):
-        cv.check_type('cross sections', multipole_library, str)
-        self._multipole_library = multipole_library
 
     def append(self, material):
         """Append material to collection
@@ -1060,11 +1052,6 @@ class Materials(cv.CheckedList):
             element = ET.SubElement(root_element, "cross_sections")
             element.text = str(self._cross_sections)
 
-    def _create_multipole_library_subelement(self, root_element):
-        if self._multipole_library is not None:
-            element = ET.SubElement(root_element, "multipole_library")
-            element.text = str(self._multipole_library)
-
     def export_to_xml(self, path='materials.xml'):
         """Export material collection to an XML file.
 
@@ -1077,15 +1064,19 @@ class Materials(cv.CheckedList):
 
         root_element = ET.Element("materials")
         self._create_cross_sections_subelement(root_element)
-        self._create_multipole_library_subelement(root_element)
         self._create_material_subelements(root_element)
 
         # Clean the indentation in the file to be user-readable
         clean_indentation(root_element)
 
+        # Check if path is a directory
+        p = Path(path)
+        if p.is_dir():
+            p /= 'materials.xml'
+
         # Write the XML Tree to the materials.xml file
         tree = ET.ElementTree(root_element)
-        tree.write(path, xml_declaration=True, encoding='utf-8')
+        tree.write(str(p), xml_declaration=True, encoding='utf-8')
 
     @classmethod
     def from_xml(cls, path='materials.xml'):
@@ -1114,8 +1105,5 @@ class Materials(cv.CheckedList):
         xs = tree.find('cross_sections')
         if xs is not None:
             materials.cross_sections = xs.text
-        mpl = tree.find('multipole_library')
-        if mpl is not None:
-            materials.multipole_library = mpl.text
 
         return materials

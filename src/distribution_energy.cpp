@@ -245,6 +245,9 @@ double ContinuousTabular::sample(double E) const
       E_out = E_l_k + (std::sqrt(std::max(0.0, p_l_k*p_l_k +
                        2.0*frac*(r1 - c_k))) - p_l_k)/frac;
     }
+  } else {
+    throw std::runtime_error{"Unexpected interpolation for continuous energy "
+      "distribution."};
   }
 
   // Now interpolate between incident energy bins i and i + 1
@@ -279,7 +282,7 @@ double MaxwellEnergy::sample(double E) const
 
   while (true) {
     // Sample maxwell fission spectrum
-    double E_out = maxwell_spectrum_c(theta);
+    double E_out = maxwell_spectrum(theta);
 
     // Accept energy based on restriction energy
     if (E_out <= E - u_) return E_out;
@@ -343,7 +346,7 @@ double WattEnergy::sample(double E) const
 
   while (true) {
     // Sample energy-dependent Watt fission spectrum
-    double E_out = watt_spectrum_c(a, b);
+    double E_out = watt_spectrum(a, b);
 
     // Accept energy based on restriction energy
     if (E_out <= E - u_) return E_out;

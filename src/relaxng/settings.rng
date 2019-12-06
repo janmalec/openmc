@@ -260,11 +260,6 @@
       </element>
     </optional>
     <optional>
-      <element name="run_cmfd">
-        <data type="boolean"/>
-      </element>
-    </optional>
-    <optional>
       <element name="run_mode">
         <data type="string"/>
       </element>
@@ -351,6 +346,30 @@
                     <optional>
                       <element name="z">
                         <ref name="distribution"/>
+                      </element>
+                    </optional>
+                    <optional>
+                      <element name="r">
+                        <ref name="distribution"/>
+                      </element>
+                    </optional>
+                    <optional>
+                      <element name="theta">
+                        <ref name="distribution"/>
+                      </element>
+                    </optional>
+                    <optional>
+                      <element name="phi">
+                        <ref name="distribution"/>
+                      </element>
+                    </optional>
+                    <optional>
+                      <element name="origin">
+                        <list>
+                          <data type="double"/>
+                          <data type="double"/>
+                          <data type="double"/>
+                        </list>
                       </element>
                     </optional>
                   </interleave>

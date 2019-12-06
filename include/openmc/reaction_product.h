@@ -28,8 +28,8 @@ public:
   //! Emission mode for product
   enum class EmissionMode {
     prompt,  // Prompt emission of secondary particle
-    total,   // Delayed emission of secondary particle
-    delayed  // Yield represents total emission (prompt + delayed)
+    delayed, // Yield represents total emission (prompt + delayed)
+    total    // Delayed emission of secondary particle
   };
 
   using Secondary = std::unique_ptr<AngleEnergy>;
@@ -44,7 +44,7 @@ public:
   //! \param[out] mu Outgoing cosine with respect to current direction
   void sample(double E_in, double& E_out, double& mu) const;
 
-  ParticleType particle_; //!< Particle type
+  Particle::Type particle_; //!< Particle type
   EmissionMode emission_mode_; //!< Emission mode
   double decay_rate_; //!< Decay rate (for delayed neutron precursors) in [1/s]
   std::unique_ptr<Function1D> yield_; //!< Yield as a function of energy

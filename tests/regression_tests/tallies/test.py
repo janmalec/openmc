@@ -1,6 +1,6 @@
 from openmc.filter import *
 from openmc.filter_expansion import *
-from openmc import Mesh, Tally
+from openmc import RegularMesh, Tally
 
 from tests.testing_harness import HashedPyAPITestHarness
 
@@ -28,7 +28,7 @@ def test_tallies():
     azimuthal_tally2.scores = ['flux']
     azimuthal_tally2.estimator = 'analog'
 
-    mesh_2x2 = Mesh(mesh_id=1)
+    mesh_2x2 = RegularMesh(mesh_id=1)
     mesh_2x2.lower_left = [-182.07, -182.07]
     mesh_2x2.upper_right = [182.07, 182.07]
     mesh_2x2.dimension = [2, 2]
@@ -47,7 +47,8 @@ def test_tallies():
 
     dg_tally = Tally()
     dg_tally.filters = [DelayedGroupFilter((1, 2, 3, 4, 5, 6))]
-    dg_tally.scores = ['delayed-nu-fission']
+    dg_tally.scores = ['delayed-nu-fission', 'decay-rate']
+    dg_tally.nuclides = ['U235', 'O16', 'total']
 
     four_groups = (0.0, 0.253, 1.0e3, 1.0e6, 20.0e6)
     energy_filter = EnergyFilter(four_groups)
@@ -130,17 +131,19 @@ def test_tallies():
     cell_filter = CellFilter((model.geometry.get_all_cells()[10],
                               model.geometry.get_all_cells()[21],
                               22, 23, 60))  # Test both Cell objects and ids
-    score_tallies = [Tally(), Tally(), Tally()]
+    score_tallies = [Tally() for i in range(6)]
     for t in score_tallies:
         t.filters = [cell_filter]
         t.scores = ['absorption', 'delayed-nu-fission', 'events', 'fission',
                     'inverse-velocity', 'kappa-fission', '(n,2n)', '(n,n1)',
                     '(n,gamma)', 'nu-fission', 'scatter', 'elastic',
                     'total', 'prompt-nu-fission', 'fission-q-prompt',
-                    'fission-q-recoverable']
-    score_tallies[0].estimator = 'tracklength'
-    score_tallies[1].estimator = 'analog'
-    score_tallies[2].estimator = 'collision'
+                    'fission-q-recoverable', 'decay-rate']
+    for t in score_tallies[0:2]: t.estimator = 'tracklength'
+    for t in score_tallies[2:4]: t.estimator = 'analog'
+    for t in score_tallies[4:6]: t.estimator = 'collision'
+    for t in score_tallies[1::2]:
+        t.nuclides = ['U235', 'O16', 'total']
 
     cell_filter2 = CellFilter((21, 22, 23, 27, 28, 29, 60))
     flux_tallies = [Tally() for i in range(3)]
@@ -150,15 +153,6 @@ def test_tallies():
     flux_tallies[0].estimator = 'tracklength'
     flux_tallies[1].estimator = 'analog'
     flux_tallies[2].estimator = 'collision'
-
-    total_tallies = [Tally() for i in range(3)]
-    for t in total_tallies:
-        t.filters = [cell_filter]
-        t.scores = ['total']
-        t.nuclides = ['U235', 'total']
-    total_tallies[0].estimator = 'tracklength'
-    total_tallies[1].estimator = 'analog'
-    total_tallies[2].estimator = 'collision'
 
     all_nuclide_tallies = [Tally() for i in range(4)]
     for t in all_nuclide_tallies:
@@ -171,6 +165,10 @@ def test_tallies():
     all_nuclide_tallies[3].filters = [mesh_filter]
     all_nuclide_tallies[3].nuclides = ['U235']
 
+    fusion_tally = Tally()
+    fusion_tally.scores = ['H1-production', 'H2-production', 'H3-production',
+        'He3-production', 'He4-production', 'heating', 'damage-energy']
+
     model.tallies += [
         azimuthal_tally1, azimuthal_tally2, azimuthal_tally3,
         cellborn_tally, dg_tally, energy_tally, energyout_tally,
@@ -179,7 +177,7 @@ def test_tallies():
         harmonics_tally, harmonics_tally2, harmonics_tally3, universe_tally]
     model.tallies += score_tallies
     model.tallies += flux_tallies
-    model.tallies += total_tallies
     model.tallies += all_nuclide_tallies
+    model.tallies.append(fusion_tally)
 
     harness.main()

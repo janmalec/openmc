@@ -1,5 +1,6 @@
 from abc import ABCMeta
-from collections import Iterable, OrderedDict
+from collections import OrderedDict
+from collections.abc import Iterable
 import copy
 import hashlib
 from itertools import product
@@ -31,7 +32,8 @@ _CURRENT_NAMES = (
     'z-min out', 'z-min in', 'z-max out', 'z-max in'
 )
 
-_PARTICLE_IDS = {'neutron': 1, 'photon': 2, 'electron': 3, 'positron': 4}
+_PARTICLES = {'neutron', 'photon', 'electron', 'positron'}
+
 
 class FilterMeta(ABCMeta):
     def __new__(cls, name, bases, namespace, **kwargs):
@@ -160,8 +162,8 @@ class Filter(IDManagerMixin, metaclass=FilterMeta):
         Keyword arguments
         -----------------
         meshes : dict
-            Dictionary mapping integer IDs to openmc.Mesh objects.  Only used
-            for openmc.MeshFilter objects.
+            Dictionary mapping integer IDs to openmc.MeshBase objects.  Only
+            used for openmc.MeshFilter objects.
 
         """
 
@@ -169,19 +171,19 @@ class Filter(IDManagerMixin, metaclass=FilterMeta):
 
         # If the HDF5 'type' variable matches this class's short_name, then
         # there is no overriden from_hdf5 method.  Pass the bins to __init__.
-        if group['type'].value.decode() == cls.short_name.lower():
-            out = cls(group['bins'].value, filter_id=filter_id)
-            out._num_bins = group['n_bins'].value
+        if group['type'][()].decode() == cls.short_name.lower():
+            out = cls(group['bins'][()], filter_id=filter_id)
+            out._num_bins = group['n_bins'][()]
             return out
 
         # Search through all subclasses and find the one matching the HDF5
         # 'type'.  Call that class's from_hdf5 method.
         for subclass in cls._recursive_subclasses():
-            if group['type'].value.decode() == subclass.short_name.lower():
+            if group['type'][()].decode() == subclass.short_name.lower():
                 return subclass.from_hdf5(group, **kwargs)
 
         raise ValueError("Unrecognized Filter class: '"
-                         + group['type'].value.decode() + "'")
+                         + group['type'][()].decode() + "'")
 
     @property
     def bins(self):
@@ -546,10 +548,9 @@ class ParticleFilter(Filter):
 
     Parameters
     ----------
-    bins : str, int, or iterable of Integral
-        The Particles to tally. Either str with particle type or their
-        ID numbers can be used ('neutron' = 1, 'photon' = 2, 'electron' = 3,
-        'positron' = 4).
+    bins : str, or iterable of str
+        The particles to tally represented as strings ('neutron', 'photon',
+        'electron', 'positron').
     filter_id : int
         Unique identifier for the filter
 
@@ -570,15 +571,21 @@ class ParticleFilter(Filter):
     @bins.setter
     def bins(self, bins):
         bins = np.atleast_1d(bins)
-        cv.check_iterable_type('filter bins', bins, (Integral, str))
+        cv.check_iterable_type('filter bins', bins, str)
         for edge in bins:
-            if isinstance(edge, Integral):
-                cv.check_value('filter bin', edge, _PARTICLE_IDS.values())
-            else:
-                cv.check_value('filter bin', edge, _PARTICLE_IDS.keys())
-        bins = np.atleast_1d([b if isinstance(b, Integral) else _PARTICLE_IDS[b]
-                              for b in bins])
+            cv.check_value('filter bin', edge, _PARTICLES)
         self._bins = bins
+
+    @classmethod
+    def from_hdf5(cls, group, **kwargs):
+        if group['type'][()].decode() != cls.short_name.lower():
+            raise ValueError("Expected HDF5 data for filter type '"
+                             + cls.short_name.lower() + "' but got '"
+                             + group['type'][()].decode() + " instead")
+
+        particles = [b.decode() for b in group['bins'][()]]
+        filter_id = int(group.name.split('/')[-1].lstrip('filter '))
+        return cls(particles, filter_id=filter_id)
 
 
 class MeshFilter(Filter):
@@ -586,15 +593,15 @@ class MeshFilter(Filter):
 
     Parameters
     ----------
-    mesh : openmc.Mesh
-        The Mesh object that events will be tallied onto
+    mesh : openmc.MeshBase
+        The mesh object that events will be tallied onto
     filter_id : int
         Unique identifier for the filter
 
     Attributes
     ----------
-    mesh : openmc.Mesh
-        The Mesh object that events will be tallied onto
+    mesh : openmc.MeshBase
+        The mesh object that events will be tallied onto
     id : int
         Unique identifier for the filter
     bins : list of tuple
@@ -609,6 +616,11 @@ class MeshFilter(Filter):
         self.mesh = mesh
         self.id = filter_id
 
+    def __hash__(self):
+        string = type(self).__name__ + '\n'
+        string += '{: <16}=\t{}\n'.format('\tMesh ID', self.mesh.id)
+        return hash(string)
+
     def __repr__(self):
         string = type(self).__name__ + '\n'
         string += '{: <16}=\t{}\n'.format('\tMesh ID', self.mesh.id)
@@ -617,16 +629,16 @@ class MeshFilter(Filter):
 
     @classmethod
     def from_hdf5(cls, group, **kwargs):
-        if group['type'].value.decode() != cls.short_name.lower():
+        if group['type'][()].decode() != cls.short_name.lower():
             raise ValueError("Expected HDF5 data for filter type '"
                              + cls.short_name.lower() + "' but got '"
-                             + group['type'].value.decode() + " instead")
+                             + group['type'][()].decode() + " instead")
 
         if 'meshes' not in kwargs:
             raise ValueError(cls.__name__ + " requires a 'meshes' keyword "
                              "argument.")
 
-        mesh_id = group['bins'].value
+        mesh_id = group['bins'][()]
         mesh_obj = kwargs['meshes'][mesh_id]
         filter_id = int(group.name.split('/')[-1].lstrip('filter '))
 
@@ -640,7 +652,7 @@ class MeshFilter(Filter):
 
     @mesh.setter
     def mesh(self, mesh):
-        cv.check_type('filter mesh', mesh, openmc.Mesh)
+        cv.check_type('filter mesh', mesh, openmc.MeshBase)
         self._mesh = mesh
         self.bins = list(mesh.indices)
 
@@ -682,7 +694,7 @@ class MeshFilter(Filter):
         # Initialize dictionary to build Pandas Multi-index column
         filter_dict = {}
 
-        # Append Mesh ID as outermost index of multi-index
+        # Append mesh ID as outermost index of multi-index
         mesh_key = 'mesh {}'.format(self.mesh.id)
 
         # Find mesh dimensions - use 3D indices for simplicity
@@ -744,17 +756,17 @@ class MeshSurfaceFilter(MeshFilter):
 
     Parameters
     ----------
-    mesh : openmc.Mesh
-        The Mesh object that events will be tallied onto
+    mesh : openmc.MeshBase
+        The mesh object that events will be tallied onto
     filter_id : int
         Unique identifier for the filter
 
     Attributes
     ----------
     bins : Integral
-        The Mesh ID
-    mesh : openmc.Mesh
-        The Mesh object that events will be tallied onto
+        The mesh ID
+    mesh : openmc.MeshBase
+        The mesh object that events will be tallied onto
     id : int
         Unique identifier for the filter
     bins : list of tuple
@@ -769,11 +781,11 @@ class MeshSurfaceFilter(MeshFilter):
 
     @MeshFilter.mesh.setter
     def mesh(self, mesh):
-        cv.check_type('filter mesh', mesh, openmc.Mesh)
+        cv.check_type('filter mesh', mesh, openmc.MeshBase)
         self._mesh = mesh
 
         # Take the product of mesh indices and current names
-        n_dim = len(mesh.dimension)
+        n_dim = mesh.n_dimension
         self.bins = [mesh_tuple + (surf,) for mesh_tuple, surf in
                      product(mesh.indices, _CURRENT_NAMES[:4*n_dim])]
 
@@ -811,7 +823,7 @@ class MeshSurfaceFilter(MeshFilter):
         # Initialize dictionary to build Pandas Multi-index column
         filter_dict = {}
 
-        # Append Mesh ID as outermost index of multi-index
+        # Append mesh ID as outermost index of multi-index
         mesh_key = 'mesh {}'.format(self.mesh.id)
 
         # Find mesh dimensions - use 3D indices for simplicity
@@ -1190,15 +1202,15 @@ class DistribcellFilter(Filter):
 
     @classmethod
     def from_hdf5(cls, group, **kwargs):
-        if group['type'].value.decode() != cls.short_name.lower():
+        if group['type'][()].decode() != cls.short_name.lower():
             raise ValueError("Expected HDF5 data for filter type '"
                              + cls.short_name.lower() + "' but got '"
-                             + group['type'].value.decode() + " instead")
+                             + group['type'][()].decode() + " instead")
 
         filter_id = int(group.name.split('/')[-1].lstrip('filter '))
 
-        out = cls(group['bins'].value, filter_id=filter_id)
-        out._num_bins = group['n_bins'].value
+        out = cls(group['bins'][()], filter_id=filter_id)
+        out._num_bins = group['n_bins'][()]
 
         return out
 
@@ -1637,13 +1649,13 @@ class EnergyFunctionFilter(Filter):
 
     @classmethod
     def from_hdf5(cls, group, **kwargs):
-        if group['type'].value.decode() != cls.short_name.lower():
+        if group['type'][()].decode() != cls.short_name.lower():
             raise ValueError("Expected HDF5 data for filter type '"
                              + cls.short_name.lower() + "' but got '"
-                             + group['type'].value.decode() + " instead")
+                             + group['type'][()].decode() + " instead")
 
-        energy = group['energy'].value
-        y = group['y'].value
+        energy = group['energy'][()]
+        y = group['y'][()]
         filter_id = int(group.name.split('/')[-1].lstrip('filter '))
 
         return cls(energy, y, filter_id=filter_id)

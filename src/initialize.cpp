@@ -1,33 +1,42 @@
 #include "openmc/initialize.h"
 
 #include <cstddef>
+#include <cstdlib> // for getenv
 #include <cstring>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #ifdef _OPENMP
-#include "omp.h"
+#include <omp.h>
 #endif
 
 #include "openmc/capi.h"
 #include "openmc/constants.h"
+#include "openmc/cross_sections.h"
 #include "openmc/error.h"
+#include "openmc/geometry_aux.h"
 #include "openmc/hdf5_interface.h"
+#include "openmc/material.h"
 #include "openmc/message_passing.h"
+#include "openmc/mgxs_interface.h"
+#include "openmc/nuclide.h"
+#include "openmc/output.h"
+#include "openmc/plot.h"
+#include "openmc/random_lcg.h"
 #include "openmc/settings.h"
+#include "openmc/simulation.h"
 #include "openmc/string_utils.h"
+#include "openmc/summary.h"
+#include "openmc/tallies/tally.h"
+#include "openmc/thermal.h"
+#include "openmc/timer.h"
 
-// data/functions from Fortran side
-extern "C" void print_usage();
-extern "C" void print_version();
-
-// Paths to various files
-extern "C" {
-  bool is_null(void* ptr) {return !ptr;}
-}
 
 int openmc_init(int argc, char* argv[], const void* intracomm)
 {
+  using namespace openmc;
+
 #ifdef OPENMC_MPI
   // Check if intracomm was passed
   MPI_Comm comm;
@@ -38,20 +47,37 @@ int openmc_init(int argc, char* argv[], const void* intracomm)
   }
 
   // Initialize MPI for C++
-  openmc::initialize_mpi(comm);
+  initialize_mpi(comm);
 #endif
 
   // Parse command-line arguments
-  int err = openmc::parse_command_line(argc, argv);
+  int err = parse_command_line(argc, argv);
   if (err) return err;
 
-  // Continue with rest of initialization
-#ifdef OPENMC_MPI
-  MPI_Fint fcomm = MPI_Comm_c2f(comm);
-  openmc_init_f(&fcomm);
-#else
-  openmc_init_f(nullptr);
+  // Start total and initialization timer
+  simulation::time_total.start();
+  simulation::time_initialize.start();
+
+#ifdef _OPENMP
+  // If OMP_SCHEDULE is not set, default to a static schedule
+  char* envvar = std::getenv("OMP_SCHEDULE");
+  if (!envvar) {
+    omp_set_schedule(omp_sched_static, 0);
+  }
 #endif
+
+  // Initialize random number generator -- if the user specifies a seed, it
+  // will be re-initialized later
+  openmc::openmc_set_seed(DEFAULT_SEED);
+
+  // Read XML input files
+  read_input_xml();
+
+  // Check for particle restart run
+  if (settings::particle_restart_run) settings::run_mode = RUN_MODE_PARTICLE;
+
+  // Stop initialization timer
+  simulation::time_initialize.stop();
 
   return 0;
 }
@@ -71,24 +97,22 @@ void initialize_mpi(MPI_Comm intracomm)
   // Determine number of processes and rank for each
   MPI_Comm_size(intracomm, &mpi::n_procs);
   MPI_Comm_rank(intracomm, &mpi::rank);
-
-  // Set variable for Fortran side
-  openmc_n_procs = mpi::n_procs;
-  openmc_rank = mpi::rank;
-  openmc_master = mpi::master = (mpi::rank == 0);
+  mpi::master = (mpi::rank == 0);
 
   // Create bank datatype
-  Bank b;
-  MPI_Aint disp[] {
-    offsetof(Bank, wgt),
-    offsetof(Bank, xyz),
-    offsetof(Bank, uvw),
-    offsetof(Bank, E),
-    offsetof(Bank, delayed_group)
-  };
-  int blocks[] {1, 3, 3, 1, 1};
-  MPI_Datatype types[] {MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_INT};
-  MPI_Type_create_struct(5, blocks, disp, types, &mpi::bank);
+  Particle::Bank b;
+  MPI_Aint disp[6];
+  MPI_Get_address(&b.r, &disp[0]);
+  MPI_Get_address(&b.u, &disp[1]);
+  MPI_Get_address(&b.E, &disp[2]);
+  MPI_Get_address(&b.wgt, &disp[3]);
+  MPI_Get_address(&b.delayed_group, &disp[4]);
+  MPI_Get_address(&b.particle, &disp[5]);
+  for (int i = 5; i >= 0; --i) disp[i] -= disp[0];
+
+  int blocks[] {3, 3, 1, 1, 1, 1};
+  MPI_Datatype types[] {MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_INT, MPI_INT};
+  MPI_Type_create_struct(6, blocks, disp, types, &mpi::bank);
   MPI_Type_commit(&mpi::bank);
 }
 #endif // OPENMC_MPI
@@ -97,7 +121,6 @@ void initialize_mpi(MPI_Comm intracomm)
 int
 parse_command_line(int argc, char* argv[])
 {
-  char buffer[256];  // buffer for reading attribute
   int last_flag = 0;
   for (int i=1; i < argc; ++i) {
     std::string arg {argv[i]};
@@ -172,15 +195,15 @@ parse_command_line(int argc, char* argv[])
 
 #ifdef _OPENMP
         // Read and set number of OpenMP threads
-        openmc_n_threads = std::stoi(argv[i]);
-        if (openmc_n_threads < 1) {
+        int n_threads = std::stoi(argv[i]);
+        if (n_threads < 1) {
           std::string msg {"Number of threads must be positive."};
           strcpy(openmc_err_msg, msg.c_str());
           return OPENMC_E_INVALID_ARGUMENT;
         }
-        omp_set_num_threads(openmc_n_threads);
+        omp_set_num_threads(n_threads);
 #else
-        if (openmc_master)
+        if (mpi::master)
           warning("Ignoring number of threads specified on command line.");
 #endif
 
@@ -216,6 +239,54 @@ parse_command_line(int argc, char* argv[])
   }
 
   return 0;
+}
+
+void read_input_xml()
+{
+  read_settings_xml();
+  read_cross_sections_xml();
+  read_materials_xml();
+  read_geometry_xml();
+
+  // Convert user IDs -> indices, assign temperatures
+  double_2dvec nuc_temps(data::nuclide_map.size());
+  double_2dvec thermal_temps(data::thermal_scatt_map.size());
+  finalize_geometry(nuc_temps, thermal_temps);
+
+  if (settings::run_mode != RUN_MODE_PLOTTING) {
+    simulation::time_read_xs.start();
+    if (settings::run_CE) {
+      // Read continuous-energy cross sections
+      read_ce_cross_sections(nuc_temps, thermal_temps);
+    } else {
+      // Create material macroscopic data for MGXS
+      set_mg_interface_nuclides_and_temps();
+      data::mg.init();
+      mark_fissionable_mgxs_materials();
+    }
+    simulation::time_read_xs.stop();
+  }
+
+  read_tallies_xml();
+
+  // Initialize distribcell_filters
+  prepare_distribcell();
+
+  if (settings::run_mode == RUN_MODE_PLOTTING) {
+    // Read plots.xml if it exists
+    read_plots_xml();
+    if (mpi::master && settings::verbosity >= 5) print_plot();
+
+  } else {
+    // Write summary information
+    if (mpi::master && settings::output_summary) write_summary();
+
+    // Warn if overlap checking is on
+    if (mpi::master && settings::check_overlaps) {
+      warning("Cell overlap checking is ON.");
+    }
+  }
+
 }
 
 } // namespace openmc

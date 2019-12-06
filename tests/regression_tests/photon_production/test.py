@@ -14,10 +14,10 @@ class SourceTestHarness(PyAPITestHarness):
         materials = openmc.Materials([mat])
         materials.export_to_xml()
 
-        cyl = openmc.XCylinder(boundary_type='vacuum', R=1.0e-6)
-        x_plane_left = openmc.XPlane(boundary_type='vacuum', x0=-1.0)
-        x_plane_center = openmc.XPlane(boundary_type='transmission', x0=1.0)
-        x_plane_right = openmc.XPlane(boundary_type='vacuum', x0=1.0e9)
+        cyl = openmc.XCylinder(r=1.0, boundary_type='vacuum')
+        x_plane_left = openmc.XPlane(-1.0, 'vacuum')
+        x_plane_center = openmc.XPlane(1.0)
+        x_plane_right = openmc.XPlane(1.0e9, 'vacuum')
 
         inner_cyl_left = openmc.Cell()
         inner_cyl_right = openmc.Cell()
@@ -31,9 +31,9 @@ class SourceTestHarness(PyAPITestHarness):
         geometry.export_to_xml()
 
         source = openmc.Source()
-        source.space = openmc.stats.Point((0,0,0))
+        source.space = openmc.stats.Point((0, 0, 0))
         source.angle = openmc.stats.Monodirectional()
-        source.energy = openmc.stats.Discrete([14.0], [1.0])
+        source.energy = openmc.stats.Discrete([14.0e6], [1.0])
         source.particle = 'neutron'
 
         settings = openmc.Settings()
@@ -48,20 +48,40 @@ class SourceTestHarness(PyAPITestHarness):
 
         surface_filter = openmc.SurfaceFilter(cyl)
         particle_filter = openmc.ParticleFilter('photon')
-        tally = openmc.Tally()
-        tally.filters = [surface_filter, particle_filter]
-        tally.scores = ['current']
-        tallies = openmc.Tallies([tally])
+        current_tally = openmc.Tally()
+        current_tally.filters = [surface_filter, particle_filter]
+        current_tally.scores = ['current']
+        tally_tracklength = openmc.Tally()
+        tally_tracklength.filters = [particle_filter]
+        tally_tracklength.scores = ['total', 'heating']
+        tally_tracklength.nuclides = ['Al27', 'total']
+        tally_tracklength.estimator = 'tracklength'
+        tally_collision = openmc.Tally()
+        tally_collision.filters = [particle_filter]
+        tally_collision.scores = ['total', 'heating']
+        tally_collision.nuclides = ['Al27', 'total']
+        tally_collision.estimator = 'collision'
+        tally_analog = openmc.Tally()
+        tally_analog.filters = [particle_filter]
+        tally_analog.scores = ['total', 'heating']
+        tally_analog.nuclides = ['Al27', 'total']
+        tally_analog.estimator = 'analog'
+        tallies = openmc.Tallies([current_tally, tally_tracklength,
+                                  tally_collision, tally_analog])
         tallies.export_to_xml()
 
     def _get_results(self):
         with openmc.StatePoint(self._sp_name) as sp:
             outstr = ''
-            t = sp.get_tally()
-            outstr += 'tally {}:\n'.format(t.id)
-            outstr += 'sum = {:12.6E}\n'.format(t.sum[0, 0, 0])
-            outstr += 'sum_sq = {:12.6E}\n'.format(t.sum_sq[0, 0, 0])
+            for i, tally_ind in enumerate(sp.tallies):
+                tally = sp.tallies[tally_ind]
+                results = np.zeros((tally.sum.size * 2, ))
+                results[0::2] = tally.sum.ravel()
+                results[1::2] = tally.sum_sq.ravel()
+                results = ['{0:12.6E}'.format(x) for x in results]
 
+                outstr += 'tally {}:\n'.format(i + 1)
+                outstr += '\n'.join(results) + '\n'
             return outstr
 
 

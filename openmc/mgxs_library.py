@@ -1840,10 +1840,10 @@ class XSdata(object):
                     mu = np.linspace(-1, 1, xsdata.num_orders)
                     # Evaluate the legendre on the mu grid
                     for imu in range(len(mu)):
-                        new_data[..., imu] = \
-                            np.sum((l + 0.5) * eval_legendre(l, mu[imu]) *
-                                   orig_data[..., l]
-                                   for l in range(self.num_orders))
+                        for l in range(self.num_orders):
+                            new_data[..., imu] += (
+                                 (l + 0.5) * eval_legendre(l, mu[imu]) *
+                                 orig_data[..., l])
 
                 elif target_format == 'histogram':
                     # This code uses the vectorized integration capabilities
@@ -1857,11 +1857,10 @@ class XSdata(object):
                         mu_fine = np.linspace(mu[h_bin], mu[h_bin + 1], _NMU)
                         table_fine = np.zeros(new_data.shape[:-1] + (_NMU,))
                         for imu in range(len(mu_fine)):
-                            table_fine[..., imu] = \
-                                np.sum((l + 0.5) *
-                                       eval_legendre(l, mu_fine[imu]) *
-                                       orig_data[..., l]
-                                       for l in range(self.num_orders))
+                            for l in range(self.num_orders):
+                                table_fine[..., imu] += ((l + 0.5)
+                                     * eval_legendre(l, mu_fine[imu]) *
+                                     orig_data[..., l])
                         new_data[..., h_bin] = simps(table_fine, mu_fine)
 
             elif self.scatter_format == 'tabular':
@@ -2184,7 +2183,7 @@ class XSdata(object):
         kTs_group = group['kTs']
         float_temperatures = []
         for temperature in temperatures:
-            kT = kTs_group[temperature].value
+            kT = kTs_group[temperature][()]
             float_temperatures.append(kT / openmc.data.K_BOLTZMANN)
 
         attrs = group.attrs.keys()
@@ -2220,7 +2219,7 @@ class XSdata(object):
             for xs_type in xs_types:
                 set_func = 'set_' + xs_type.replace(' ', '_').replace('-', '_')
                 if xs_type in temperature_group:
-                    getattr(data, set_func)(temperature_group[xs_type].value,
+                    getattr(data, set_func)(temperature_group[xs_type][()],
                                             float_temp)
 
             scatt_group = temperature_group['scatter_data']
@@ -2228,7 +2227,7 @@ class XSdata(object):
             # Get scatter matrix and 'un-flatten' it
             g_max = scatt_group['g_max']
             g_min = scatt_group['g_min']
-            flat_scatter = scatt_group['scatter_matrix'].value
+            flat_scatter = scatt_group['scatter_matrix'][()]
             scatter_matrix = np.zeros(data.xs_shapes["[G][G'][Order]"])
             G = data.energy_groups.num_groups
             if data.representation == 'isotropic':
@@ -2260,7 +2259,7 @@ class XSdata(object):
 
             # Repeat for multiplicity
             if 'multiplicity_matrix' in scatt_group:
-                flat_mult = scatt_group['multiplicity_matrix'].value
+                flat_mult = scatt_group['multiplicity_matrix'][()]
                 mult_matrix = np.zeros(data.xs_shapes["[G][G']"])
                 flat_index = 0
                 for p in range(Np):

@@ -44,11 +44,11 @@ def make_model():
     model.materials += [m1, m2, m3, m4]
 
     # Geometry
-    x0 = openmc.XPlane(x0=-10, boundary_type='vacuum')
-    x1 = openmc.XPlane(x0=-5)
-    x2 = openmc.XPlane(x0=0)
-    x3 = openmc.XPlane(x0=5)
-    x4 = openmc.XPlane(x0=10, boundary_type='vacuum')
+    x0 = openmc.XPlane(-10, 'vacuum')
+    x1 = openmc.XPlane(-5)
+    x2 = openmc.XPlane(0)
+    x3 = openmc.XPlane(5)
+    x4 = openmc.XPlane(10, 'vacuum')
 
     root_univ = openmc.Universe()
 
@@ -66,7 +66,7 @@ def make_model():
     # Settings
     model.settings.batches = 5
     model.settings.inactive = 0
-    model.settings.particles = 1000
+    model.settings.particles = 400
     model.settings.source = openmc.Source(space=openmc.stats.Box(
         [-4, -4, -4], [4, 4, 4]))
 

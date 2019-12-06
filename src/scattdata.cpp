@@ -10,6 +10,7 @@
 #include "openmc/error.h"
 #include "openmc/math_functions.h"
 #include "openmc/random_lcg.h"
+#include "openmc/settings.h"
 
 namespace openmc {
 
@@ -170,14 +171,12 @@ ScattData::sample_energy(int gin, int& gout, int& i_gout)
 {
   // Sample the outgoing group
   double xi = prn();
-
+  double prob = 0.;
   i_gout = 0;
-  gout = gmin[gin];
-  double prob = energy[gin][i_gout];
-  while((prob < xi) && (gout < gmax[gin])) {
-    gout++;
-    i_gout++;
+  for (gout = gmin[gin]; gout < gmax[gin]; ++gout) {
     prob += energy[gin][i_gout];
+    if (xi < prob) break;
+    ++i_gout;
   }
 }
 
@@ -316,8 +315,8 @@ ScattDataLegendre::update_max_val()
         }
 
         // Calculate probability
-        double f = evaluate_legendre_c(dist[gin][i_gout].size() - 1,
-                                       dist[gin][i_gout].data(), mu);
+        double f = evaluate_legendre(dist[gin][i_gout].size() - 1,
+                                     dist[gin][i_gout].data(), mu);
 
         // if this is a new maximum, store it
         if (f > max_val[gin][i_gout]) max_val[gin][i_gout] = f;
@@ -339,8 +338,8 @@ ScattDataLegendre::calc_f(int gin, int gout, double mu)
     f = 0.;
   } else {
     int i_gout = gout - gmin[gin];
-    f = evaluate_legendre_c(dist[gin][i_gout].size() - 1,
-                            dist[gin][i_gout].data(), mu);
+    f = evaluate_legendre(dist[gin][i_gout].size() - 1,
+                          dist[gin][i_gout].data(), mu);
   }
   return f;
 }
@@ -357,20 +356,18 @@ ScattDataLegendre::sample(int gin, int& gout, double& mu, double& wgt)
   // Now we can sample mu using the scattering kernel using rejection
   // sampling from a rectangular bounding box
   double M = max_val[gin][i_gout];
-  int samples = 0;
-
-  while(true) {
+  int samples;
+  for (samples = 0; samples < MAX_SAMPLE; ++samples) {
     mu = 2. * prn() - 1.;
     double f = calc_f(gin, gout, mu);
     if (f > 0.) {
       double u = prn() * M;
       if (u <= f) break;
     }
-    samples++;
-    if (samples > MAX_SAMPLE) {
-        fatal_error("Maximum number of Legendre expansion samples reached");
-    }
-  };
+  }
+  if (samples == MAX_SAMPLE) {
+    fatal_error("Maximum number of Legendre expansion samples reached!");
+  }
 
   // Update the weight to reflect neutron multiplicity
   wgt *= mult[gin][i_gout];
@@ -850,10 +847,10 @@ ScattDataTabular::combine(const std::vector<ScattData*>& those_scatts,
 //==============================================================================
 
 void
-convert_legendre_to_tabular(ScattDataLegendre& leg, ScattDataTabular& tab,
-                            int n_mu)
+convert_legendre_to_tabular(ScattDataLegendre& leg, ScattDataTabular& tab)
 {
   // See if the user wants us to figure out how many points to use
+  int n_mu = settings::legendre_to_tabular_points;
   if (n_mu == C_NONE) {
     // then we will use 2 pts if its P0, or the default if a higher order
     // TODO use an error minimization algorithm that also picks n_mu
@@ -881,8 +878,8 @@ convert_legendre_to_tabular(ScattDataLegendre& leg, ScattDataTabular& tab,
       tab.fmu[gin][i_gout].resize(n_mu);
       for (int imu = 0; imu < n_mu; imu++) {
         tab.fmu[gin][i_gout][imu] =
-             evaluate_legendre_c(leg.dist[gin][i_gout].size() - 1,
-                                 leg.dist[gin][i_gout].data(), tab.mu[imu]);
+             evaluate_legendre(leg.dist[gin][i_gout].size() - 1,
+                               leg.dist[gin][i_gout].data(), tab.mu[imu]);
       }
 
       // Ensure positivity

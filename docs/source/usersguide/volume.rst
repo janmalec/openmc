@@ -30,12 +30,22 @@ arguments are not necessary. For example,
 
 ::
 
-   sphere = openmc.Sphere(R=10.0)
+   sphere = openmc.Sphere(r=10.0)
    cell = openm.Cell(region=-sphere)
    vol_calc = openmc.VolumeCalculation([cell], 1000000)
 
 Of course, the volumes that you *need* this capability for are often the ones
 with complex definitions.
+
+A threshold can be applied for the calculation's variance, standard deviation,
+or relative error of volume estimates using :meth:`openmc.VolumeCalculation.set_trigger`::
+
+    vol_calc.set_trigger(1e-05, 'std_dev')
+
+If a threshold is provided, calculations will be performed iteratively using the
+number of samples specified on the calculation until all volume uncertainties are below
+the threshold value. If no threshold is provided, the calculation will run the number of
+samples specified once and return the result.
 
 Once you have one or more :class:`openmc.VolumeCalculation` objects created, you
 can then assign then to :attr:`Settings.volume_calculations`::

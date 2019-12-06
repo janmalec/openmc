@@ -11,8 +11,8 @@ def reset():
 
 
 def test_union(reset):
-    s1 = openmc.XPlane(surface_id=1, x0=5)
-    s2 = openmc.XPlane(surface_id=2, x0=-5)
+    s1 = openmc.XPlane(x0=5, surface_id=1)
+    s2 = openmc.XPlane(x0=-5, surface_id=2)
     region = +s1 | -s2
     assert isinstance(region, openmc.Union)
 
@@ -34,10 +34,16 @@ def test_union(reset):
     assert (6, -1, 0) not in reg2
     assert str(reg2) == '((1 | -2) 3)'
 
+    # translate method
+    regt = region.translate((2.0, 0.0, 0.0))
+    assert (-4, 0, 0) in regt
+    assert (6, 0, 0) not in regt
+    assert (8, 0, 0) in regt
+
 
 def test_intersection(reset):
-    s1 = openmc.XPlane(surface_id=1, x0=5)
-    s2 = openmc.XPlane(surface_id=2, x0=-5)
+    s1 = openmc.XPlane(x0=5, surface_id=1)
+    s2 = openmc.XPlane(x0=-5, surface_id=2)
     region = -s1 & +s2
     assert isinstance(region, openmc.Intersection)
 
@@ -61,11 +67,17 @@ def test_intersection(reset):
     assert (-6, -2, 0) not in reg2
     assert str(reg2) == '((-1 2) | 3)'
 
+    # translate method
+    regt = region.translate((2.0, 0.0, 0.0))
+    assert (-4, 0, 0) not in regt
+    assert (6, 0, 0) in regt
+    assert (8, 0, 0) not in regt
+
 
 def test_complement(reset):
-    zcyl = openmc.ZCylinder(surface_id=1, R=1.)
-    z0 = openmc.ZPlane(surface_id=2, z0=-5.)
-    z1 = openmc.ZPlane(surface_id=3, z0=5.)
+    zcyl = openmc.ZCylinder(r=1., surface_id=1)
+    z0 = openmc.ZPlane(-5., surface_id=2)
+    z1 = openmc.ZPlane(5., surface_id=3)
     outside = +zcyl | -z0 | +z1
     inside = ~outside
     outside_equiv = ~(-zcyl & +z0 & -z1)
@@ -87,6 +99,12 @@ def test_complement(reset):
     assert (0, 0, 0) not in outside
     assert (0, 0, 6) not in inside
     assert (0, 0, 6) in outside
+
+    # translate method
+    inside_t = inside.translate((1.0, 1.0, 1.0))
+    ll, ur = inside_t.bounding_box
+    assert ll == pytest.approx((0., 0., -4.))
+    assert ur == pytest.approx((2., 2., 6.))
 
 
 def test_get_surfaces():
@@ -133,8 +151,8 @@ def test_extend_clone():
 def test_from_expression(reset):
     # Create surface dictionary
     s1 = openmc.ZCylinder(surface_id=1)
-    s2 = openmc.ZPlane(surface_id=2, z0=-10.)
-    s3 = openmc.ZPlane(surface_id=3, z0=10.)
+    s2 = openmc.ZPlane(-10., surface_id=2)
+    s3 = openmc.ZPlane(10., surface_id=3)
     surfs = {1: s1, 2: s2, 3: s3}
 
     r = openmc.Region.from_expression('-1 2 -3', surfs)

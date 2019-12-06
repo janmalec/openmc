@@ -8,6 +8,7 @@ from xml.etree import ElementTree as ET
 import numpy as np
 
 import openmc.checkvalue as cv
+from openmc._xml import get_text
 from openmc.stats.univariate import Univariate, Uniform
 
 
@@ -46,6 +47,17 @@ class UnitSphere(metaclass=ABCMeta):
     @abstractmethod
     def to_xml_element(self):
         return ''
+
+    @classmethod
+    @abstractmethod
+    def from_xml_element(cls, elem):
+        distribution = get_text(elem, 'type')
+        if distribution == 'mu-phi':
+            return PolarAzimuthal.from_xml_element(elem)
+        elif distribution == 'isotropic':
+            return Isotropic.from_xml_element(elem)
+        elif distribution == 'monodirectional':
+            return Monodirectional.from_xml_element(elem)
 
 
 class PolarAzimuthal(UnitSphere):
@@ -121,6 +133,29 @@ class PolarAzimuthal(UnitSphere):
         element.append(self.phi.to_xml_element('phi'))
         return element
 
+    @classmethod
+    def from_xml_element(cls, elem):
+        """Generate angular distribution from an XML element
+
+        Parameters
+        ----------
+        elem : xml.etree.ElementTree.Element
+            XML element
+
+        Returns
+        -------
+        openmc.stats.PolarAzimuthal
+            Angular distribution generated from XML element
+
+        """
+        mu_phi = cls()
+        params = get_text(elem, 'parameters')
+        if params is not None:
+            mu_phi.reference_uvw = [float(x) for x in params.split()]
+        mu_phi.mu = Univariate.from_xml_element(elem.find('mu'))
+        mu_phi.phi = Univariate.from_xml_element(elem.find('phi'))
+        return mu_phi
+
 
 class Isotropic(UnitSphere):
     """Isotropic angular distribution.
@@ -142,6 +177,23 @@ class Isotropic(UnitSphere):
         element = ET.Element('angle')
         element.set("type", "isotropic")
         return element
+
+    @classmethod
+    def from_xml_element(cls, elem):
+        """Generate isotropic distribution from an XML element
+
+        Parameters
+        ----------
+        elem : xml.etree.ElementTree.Element
+            XML element
+
+        Returns
+        -------
+        openmc.stats.Isotropic
+            Isotropic distribution generated from XML element
+
+        """
+        return cls()
 
 
 class Monodirectional(UnitSphere):
@@ -178,6 +230,27 @@ class Monodirectional(UnitSphere):
             element.set("reference_uvw", ' '.join(map(str, self.reference_uvw)))
         return element
 
+    @classmethod
+    def from_xml_element(cls, elem):
+        """Generate monodirectional distribution from an XML element
+
+        Parameters
+        ----------
+        elem : xml.etree.ElementTree.Element
+            XML element
+
+        Returns
+        -------
+        openmc.stats.Monodirectional
+            Monodirectional distribution generated from XML element
+
+        """
+        monodirectional = cls()
+        params = get_text(elem, 'parameters')
+        if params is not None:
+            monodirectional.reference_uvw = [float(x) for x in params.split()]
+        return monodirectional
+
 
 class Spatial(metaclass=ABCMeta):
     """Distribution of locations in three-dimensional Euclidean space.
@@ -193,11 +266,24 @@ class Spatial(metaclass=ABCMeta):
     def to_xml_element(self):
         return ''
 
+    @classmethod
+    @abstractmethod
+    def from_xml_element(cls, elem):
+        distribution = get_text(elem, 'type')
+        if distribution == 'cartesian':
+            return CartesianIndependent.from_xml_element(elem)
+        elif distribution == 'spherical':
+            return SphericalIndependent.from_xml_element(elem)
+        elif distribution == 'box' or distribution == 'fission':
+            return Box.from_xml_element(elem)
+        elif distribution == 'point':
+            return Point.from_xml_element(elem)
+
 
 class CartesianIndependent(Spatial):
     """Spatial distribution with independent x, y, and z distributions.
 
-    This distribution allows one to specify a coordinates whose x-, y-, and z-
+    This distribution allows one to specify coordinates whose x-, y-, and z-
     components are sampled independently from one another.
 
     Parameters
@@ -219,7 +305,6 @@ class CartesianIndependent(Spatial):
         Distribution of z-coordinates
 
     """
-
 
     def __init__(self, x, y, z):
         super().__init__()
@@ -269,6 +354,142 @@ class CartesianIndependent(Spatial):
         element.append(self.y.to_xml_element('y'))
         element.append(self.z.to_xml_element('z'))
         return element
+
+    @classmethod
+    def from_xml_element(cls, elem):
+        """Generate spatial distribution from an XML element
+
+        Parameters
+        ----------
+        elem : xml.etree.ElementTree.Element
+            XML element
+
+        Returns
+        -------
+        openmc.stats.CartesianIndependent
+            Spatial distribution generated from XML element
+
+        """
+        x = Univariate.from_xml_element(elem.find('x'))
+        y = Univariate.from_xml_element(elem.find('y'))
+        z = Univariate.from_xml_element(elem.find('z'))
+        return cls(x, y, z)
+
+
+class SphericalIndependent(Spatial):
+    """Spatial distribution represented in spherical coordinates.
+
+    This distribution allows one to specify coordinates whose :math:`r`,
+    :math:`\theta`, and :math:`\phi` components are sampled independently from
+    one another and centered on the coordinates (x0, y0, z0).
+
+    Parameters
+    ----------
+    r : openmc.stats.Univariate
+        Distribution of r-coordinates
+    theta : openmc.stats.Univariate
+        Distribution of theta-coordinates (angle relative to the z-axis)
+    phi : openmc.stats.Univariate
+        Distribution of phi-coordinates (azimuthal angle)
+    origin: Iterable of float, optional
+        coordinates (x0, y0, z0) of the center of the sphere. Defaults to 
+        (0.0, 0.0, 0.0)
+
+    Attributes
+    ----------
+    r : openmc.stats.Univariate
+        Distribution of r-coordinates
+    theta : openmc.stats.Univariate
+        Distribution of theta-coordinates (angle relative to the z-axis)
+    phi : openmc.stats.Univariate
+        Distribution of phi-coordinates (azimuthal angle)
+    origin: Iterable of float, optional
+        coordinates (x0, y0, z0) of the center of the sphere. Defaults to 
+        (0.0, 0.0, 0.0)
+
+    """
+
+    def __init__(self, r, theta, phi, origin=(0.0, 0.0, 0.0)):
+        super().__init__()
+        self.r = r
+        self.theta = theta
+        self.phi = phi
+        self.origin = origin
+
+    @property
+    def r(self):
+        return self._r
+
+    @property
+    def theta(self):
+        return self._theta
+
+    @property
+    def phi(self):
+        return self._phi
+
+    @property
+    def origin(self):
+        return self._origin
+
+    @r.setter
+    def r(self, r):
+        cv.check_type('r coordinate', r, Univariate)
+        self._r = r
+
+    @theta.setter
+    def theta(self, theta):
+        cv.check_type('theta coordinate', theta, Univariate)
+        self._theta = theta
+
+    @phi.setter
+    def phi(self, phi):
+        cv.check_type('phi coordinate', phi, Univariate)
+        self._phi = phi
+
+    @origin.setter
+    def origin(self, origin):
+        cv.check_type('origin coordinates', origin, Iterable, Real)
+        origin = np.asarray(origin)
+        self._origin = origin
+
+    def to_xml_element(self):
+        """Return XML representation of the spatial distribution
+
+        Returns
+        -------
+        element : xml.etree.ElementTree.Element
+            XML element containing spatial distribution data
+
+        """
+        element = ET.Element('space')
+        element.set('type', 'spherical')
+        element.append(self.r.to_xml_element('r'))
+        element.append(self.theta.to_xml_element('theta'))
+        element.append(self.phi.to_xml_element('phi'))
+        element.set("origin", ' '.join(map(str, self.origin)))
+        return element
+
+    @classmethod
+    def from_xml_element(cls, elem):
+        """Generate spatial distribution from an XML element
+
+        Parameters
+        ----------
+        elem : xml.etree.ElementTree.Element
+            XML element
+
+        Returns
+        -------
+        openmc.stats.SphericalIndependent
+            Spatial distribution generated from XML element
+
+        """
+        r = Univariate.from_xml_element(elem.find('r'))
+        theta = Univariate.from_xml_element(elem.find('theta'))
+        phi = Univariate.from_xml_element(elem.find('phi'))
+        origin = [float(x) for x in elem.get('origin').split()]
+        return cls(r, theta, phi, origin=origin)
 
 
 class Box(Spatial):
@@ -351,6 +572,27 @@ class Box(Spatial):
                       ' '.join(map(str, self.upper_right))
         return element
 
+    @classmethod
+    def from_xml_element(cls, elem):
+        """Generate box distribution from an XML element
+
+        Parameters
+        ----------
+        elem : xml.etree.ElementTree.Element
+            XML element
+
+        Returns
+        -------
+        openmc.stats.Box
+            Box distribution generated from XML element
+
+        """
+        only_fissionable = get_text(elem, 'type') == 'fission'
+        params = [float(x) for x in get_text(elem, 'parameters').split()]
+        lower_left = params[:len(params)//2]
+        upper_right = params[len(params)//2:]
+        return cls(lower_left, upper_right, only_fissionable)
+
 
 class Point(Spatial):
     """Delta function in three dimensions.
@@ -398,3 +640,21 @@ class Point(Spatial):
         params = ET.SubElement(element, "parameters")
         params.text = ' '.join(map(str, self.xyz))
         return element
+
+    @classmethod
+    def from_xml_element(cls, elem):
+        """Generate point distribution from an XML element
+
+        Parameters
+        ----------
+        elem : xml.etree.ElementTree.Element
+            XML element
+
+        Returns
+        -------
+        openmc.stats.Point
+            Point distribution generated from XML element
+
+        """
+        xyz = [float(x) for x in get_text(elem, 'parameters').split()]
+        return cls(xyz)

@@ -1,6 +1,7 @@
 #include "openmc/endf.h"
 
 #include <algorithm> // for copy
+#include <array>
 #include <cmath>     // for log, exp
 #include <iterator>  // for back_inserter
 #include <stdexcept> // for runtime_error
@@ -43,6 +44,60 @@ Interpolation int2interp(int i)
 bool is_fission(int mt)
 {
   return mt == 18 || mt == 19 || mt == 20 || mt == 21 || mt == 38;
+}
+
+bool is_disappearance(int mt)
+{
+  if (mt >= N_DISAPPEAR && mt <= N_DA) {
+    return true;
+  } else if (mt >= N_P0 && mt <= N_AC) {
+    return true;
+  } else if (mt == N_TA || mt == N_DT || mt == N_P3HE || mt == N_D3HE
+    || mt == N_3HEA || mt == N_3P) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool is_inelastic_scatter(int mt)
+{
+  if (mt < 100) {
+    if (is_fission(mt)) {
+      return false;
+    } else {
+      return mt >= MISC && mt != 27;
+    }
+  } else if (mt <= 200) {
+    return !is_disappearance(mt);
+  } else if (mt >= N_2N0 && mt <= N_2NC) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+std::unique_ptr<Function1D>
+read_function(hid_t group, const char* name)
+{
+  hid_t dset = open_dataset(group, name);
+  std::string func_type;
+  read_attribute(dset, "type", func_type);
+  std::unique_ptr<Function1D> func;
+  if (func_type == "Tabulated1D") {
+    func = std::make_unique<Tabulated1D>(dset);
+  } else if (func_type == "Polynomial") {
+    func = std::make_unique<Polynomial>(dset);
+  } else if (func_type == "CoherentElastic") {
+    func = std::make_unique<CoherentElasticXS>(dset);
+  } else if (func_type == "IncoherentElastic") {
+    func = std::make_unique<IncoherentElasticXS>(dset);
+  } else {
+    throw std::runtime_error{"Unknown function type " + func_type +
+      " for dataset " + object_name(dset)};
+  }
+  close_dataset(dset);
+  return func;
 }
 
 //==============================================================================
@@ -114,9 +169,8 @@ double Tabulated1D::operator()(double x) const
   Interpolation interp;
   if (n_regions_ == 0) {
     interp = Interpolation::lin_lin;
-  } else if (n_regions_ == 1) {
+  } else {
     interp = int_[0];
-  } else if (n_regions_ > 1) {
     for (int j = 0; j < n_regions_; ++j) {
       if (i < nbt_[j]) {
         interp = int_[j];
@@ -183,6 +237,25 @@ double CoherentElasticXS::operator()(double E) const
     auto i_grid = lower_bound_index(bragg_edges_.begin(), bragg_edges_.end(), E);
     return factors_[i_grid] / E;
   }
+}
+
+//==============================================================================
+// IncoherentElasticXS implementation
+//==============================================================================
+
+IncoherentElasticXS::IncoherentElasticXS(hid_t dset)
+{
+  std::array<double, 2> tmp;
+  read_dataset(dset, nullptr, tmp);
+  bound_xs_ = tmp[0];
+  debye_waller_ = tmp[1];
+}
+
+double IncoherentElasticXS::operator()(double E) const
+{
+  // Determine cross section using ENDF-102, Eq. (7.5)
+  double W = debye_waller_;
+  return bound_xs_ / 2.0 * ((1 - std::exp(-4.0*E*W))/(2.0*E*W));
 }
 
 } // namespace openmc

@@ -85,28 +85,29 @@ class Summary(object):
 
     def _read_nuclides(self):
         if 'nuclides/names' in self._f:
-            names = self._f['nuclides/names'].value
-            awrs = self._f['nuclides/awrs'].value
+            names = self._f['nuclides/names'][()]
+            awrs = self._f['nuclides/awrs'][()]
             for name, awr in zip(names, awrs):
                 self._nuclides[name.decode()] = awr
 
     def _read_macroscopics(self):
         if 'macroscopics/names' in self._f:
-            names = self._f['macroscopics/names'].value
+            names = self._f['macroscopics/names'][()]
             for name in names:
                 self._macroscopics = name.decode()
 
     def _read_geometry(self):
-        if "dagmc" in self._f['geometry'].attrs.keys():
-            return
 
-        # Read in and initialize the Materials and Geometry
+        # Read in and initialize the Materials
         self._read_materials()
-        self._read_surfaces()
-        cell_fills = self._read_cells()
-        self._read_universes()
-        self._read_lattices()
-        self._finalize_geometry(cell_fills)
+
+        # Read native geometry only
+        if "dagmc" not in self._f['geometry'].attrs.keys():
+            self._read_surfaces()
+            cell_fills = self._read_cells()
+            self._read_universes()
+            self._read_lattices()
+            self._finalize_geometry(cell_fills)
 
     def _read_materials(self):
         for group in self._f['materials'].values():
@@ -130,34 +131,35 @@ class Summary(object):
 
         for key, group in self._f['geometry/cells'].items():
             cell_id = int(key.lstrip('cell '))
-            name = group['name'].value.decode() if 'name' in group else ''
-            fill_type = group['fill_type'].value.decode()
+            name = group['name'][()].decode() if 'name' in group else ''
+            fill_type = group['fill_type'][()].decode()
 
             if fill_type == 'material':
-                fill = group['material'].value
+                fill = group['material'][()]
             elif fill_type == 'universe':
-                fill = group['fill'].value
+                fill = group['fill'][()]
             else:
-                fill = group['lattice'].value
+                fill = group['lattice'][()]
 
-            region = group['region'].value.decode() if 'region' in group else ''
+            region = group['region'][()].decode() if 'region' in group else ''
 
             # Create this Cell
             cell = openmc.Cell(cell_id=cell_id, name=name)
 
             if fill_type == 'universe':
                 if 'translation' in group:
-                    translation = group['translation'][...]
+                    translation = group['translation'][()]
                     translation = np.asarray(translation, dtype=np.float64)
                     cell.translation = translation
 
                 if 'rotation' in group:
-                    rotation = group['rotation'][...]
-                    rotation = np.asarray(rotation, dtype=np.int)
-                    cell._rotation = rotation
+                    rotation = group['rotation'][()]
+                    if rotation.size == 9:
+                        rotation.shape = (3, 3)
+                    cell.rotation = rotation
 
             elif fill_type == 'material':
-                cell.temperature = group['temperature'][...]
+                cell.temperature = group['temperature'][()]
 
             # Store Cell fill information for after Universe/Lattice creation
             cell_fills[cell.id] = (fill_type, fill)

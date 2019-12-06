@@ -5,7 +5,7 @@ import pytest
 
 @pytest.fixture(scope='module')
 def pincell1(uo2, water):
-    cyl = openmc.ZCylinder(R=0.35)
+    cyl = openmc.ZCylinder(r=0.35)
     fuel = openmc.Cell(fill=uo2, region=-cyl)
     moderator = openmc.Cell(fill=water, region=+cyl)
 
@@ -17,7 +17,7 @@ def pincell1(uo2, water):
 
 @pytest.fixture(scope='module')
 def pincell2(uo2, water):
-    cyl = openmc.ZCylinder(R=0.4)
+    cyl = openmc.ZCylinder(r=0.4)
     fuel = openmc.Cell(fill=uo2, region=-cyl)
     moderator = openmc.Cell(fill=water, region=+cyl)
 
@@ -89,13 +89,13 @@ def rlat3(pincell1, pincell2, uo2, water, zr):
 def test_mesh2d(rlat2):
     shape = np.array(rlat2.shape)
     width = shape*rlat2.pitch
-    
-    mesh1 = openmc.Mesh.from_rect_lattice(rlat2)
+
+    mesh1 = openmc.RegularMesh.from_rect_lattice(rlat2)
     assert np.array_equal(mesh1.dimension, (3, 3))
     assert np.array_equal(mesh1.lower_left, rlat2.lower_left)
     assert np.array_equal(mesh1.upper_right, rlat2.lower_left + width)
-    
-    mesh2 = openmc.Mesh.from_rect_lattice(rlat2, division=3)
+
+    mesh2 = openmc.RegularMesh.from_rect_lattice(rlat2, division=3)
     assert np.array_equal(mesh2.dimension, (9, 9))
     assert np.array_equal(mesh2.lower_left, rlat2.lower_left)
     assert np.array_equal(mesh2.upper_right, rlat2.lower_left + width)
@@ -105,12 +105,12 @@ def test_mesh3d(rlat3):
     shape = np.array(rlat3.shape)
     width = shape*rlat3.pitch
 
-    mesh1 = openmc.Mesh.from_rect_lattice(rlat3)
+    mesh1 = openmc.RegularMesh.from_rect_lattice(rlat3)
     assert np.array_equal(mesh1.dimension, (3, 3, 2))
     assert np.array_equal(mesh1.lower_left, rlat3.lower_left)
     assert np.array_equal(mesh1.upper_right, rlat3.lower_left + width)
 
-    mesh2 = openmc.Mesh.from_rect_lattice(rlat3, division=3)
+    mesh2 = openmc.RegularMesh.from_rect_lattice(rlat3, division=3)
     assert np.array_equal(mesh2.dimension, (9, 9, 6))
     assert np.array_equal(mesh2.lower_left, rlat3.lower_left)
     assert np.array_equal(mesh2.upper_right, rlat3.lower_left + width)

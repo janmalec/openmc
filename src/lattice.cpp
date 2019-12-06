@@ -6,6 +6,7 @@
 
 #include "openmc/cell.h"
 #include "openmc/error.h"
+#include "openmc/geometry.h"
 #include "openmc/geometry_aux.h"
 #include "openmc/hdf5_interface.h"
 #include "openmc/string_utils.h"
@@ -18,9 +19,10 @@ namespace openmc {
 // Global variables
 //==============================================================================
 
-std::vector<Lattice*> lattices;
-
-std::unordered_map<int32_t, int32_t> lattice_map;
+namespace model {
+  std::vector<std::unique_ptr<Lattice>> lattices;
+  std::unordered_map<int32_t, int32_t> lattice_map;
+}
 
 //==============================================================================
 // Lattice implementation
@@ -65,8 +67,8 @@ Lattice::adjust_indices()
   // Adjust the indices for the universes array.
   for (LatticeIter it = begin(); it != end(); ++it) {
     int uid = *it;
-    auto search = universe_map.find(uid);
-    if (search != universe_map.end()) {
+    auto search = model::universe_map.find(uid);
+    if (search != model::universe_map.end()) {
       *it = search->second;
     } else {
       std::stringstream err_msg;
@@ -78,8 +80,8 @@ Lattice::adjust_indices()
 
   // Adjust the index for the outer universe.
   if (outer_ != NO_OUTER_UNIVERSE) {
-    auto search = universe_map.find(outer_);
-    if (search != universe_map.end()) {
+    auto search = model::universe_map.find(outer_);
+    if (search != model::universe_map.end()) {
       outer_ = search->second;
     } else {
       std::stringstream err_msg;
@@ -118,7 +120,7 @@ Lattice::to_hdf5(hid_t lattices_group) const
   }
 
   if (outer_ != NO_OUTER_UNIVERSE) {
-    int32_t outer_id = universes[outer_]->id_;
+    int32_t outer_id = model::universes[outer_]->id_;
     write_dataset(lat_group, "outer", outer_id);
   } else {
     write_dataset(lat_group, "outer", outer_);
@@ -284,15 +286,38 @@ const
 //==============================================================================
 
 std::array<int, 3>
-RectLattice::get_indices(Position r) const
+RectLattice::get_indices(Position r, Direction u) const
 {
-  int ix {static_cast<int>(std::ceil((r.x - lower_left_.x) / pitch_.x))-1};
-  int iy {static_cast<int>(std::ceil((r.y - lower_left_.y) / pitch_.y))-1};
-  int iz;
-  if (is_3d_) {
-    iz = static_cast<int>(std::ceil((r.z - lower_left_.z) / pitch_.z))-1;
+  // Determine x index, accounting for coincidence
+  double ix_ {(r.x - lower_left_.x) / pitch_.x};
+  long ix_close {std::lround(ix_)};
+  int ix;
+  if (coincident(ix_, ix_close)) {
+    ix = (u.x > 0) ? ix_close : ix_close - 1;
   } else {
-    iz = 0;
+    ix = std::floor(ix_);
+  }
+
+  // Determine y index, accounting for coincidence
+  double iy_ {(r.y - lower_left_.y) / pitch_.y};
+  long iy_close {std::lround(iy_)};
+  int iy;
+  if (coincident(iy_, iy_close)) {
+    iy = (u.y > 0) ? iy_close : iy_close - 1;
+  } else {
+    iy = std::floor(iy_);
+  }
+
+  // Determine z index, accounting for coincidence
+  int iz = 0;
+  if (is_3d_) {
+    double iz_ {(r.z - lower_left_.z) / pitch_.z};
+    long iz_close {std::lround(iz_)};
+    if (coincident(iz_, iz_close)) {
+      iz = (u.z > 0) ? iz_close : iz_close - 1;
+    } else {
+      iz = std::floor(iz_);
+    }
   }
   return {ix, iy, iz};
 }
@@ -363,36 +388,36 @@ RectLattice::to_hdf5_inner(hid_t lat_group) const
     hsize_t nx {static_cast<hsize_t>(n_cells_[0])};
     hsize_t ny {static_cast<hsize_t>(n_cells_[1])};
     hsize_t nz {static_cast<hsize_t>(n_cells_[2])};
-    int out[nx*ny*nz];
+    std::vector<int> out(nx*ny*nz);
 
     for (int m = 0; m < nz; m++) {
       for (int k = 0; k < ny; k++) {
         for (int j = 0; j < nx; j++) {
           int indx1 = nx*ny*m + nx*k + j;
           int indx2 = nx*ny*m + nx*(ny-k-1) + j;
-          out[indx2] = universes[universes_[indx1]]->id_;
+          out[indx2] = model::universes[universes_[indx1]]->id_;
         }
       }
     }
 
     hsize_t dims[3] {nz, ny, nx};
-    write_int(lat_group, 3, dims, "universes", out, false);
+    write_int(lat_group, 3, dims, "universes", out.data(), false);
 
   } else {
     hsize_t nx {static_cast<hsize_t>(n_cells_[0])};
     hsize_t ny {static_cast<hsize_t>(n_cells_[1])};
-    int out[nx*ny];
+    std::vector<int> out(nx*ny);
 
     for (int k = 0; k < ny; k++) {
       for (int j = 0; j < nx; j++) {
         int indx1 = nx*k + j;
         int indx2 = nx*(ny-k-1) + j;
-        out[indx2] = universes[universes_[indx1]]->id_;
+        out[indx2] = model::universes[universes_[indx1]]->id_;
       }
     }
 
     hsize_t dims[3] {1, ny, nx};
-    write_int(lat_group, 3, dims, "universes", out, false);
+    write_int(lat_group, 3, dims, "universes", out.data(), false);
   }
 }
 
@@ -413,6 +438,21 @@ HexLattice::HexLattice(pugi::xml_node lat_node)
   } else {
     n_axial_ = 1;
     is_3d_ = false;
+  }
+
+  // Read the lattice orientation.  Default to 'y'.
+  if (check_for_node(lat_node, "orientation")) {
+    std::string orientation = get_node_value(lat_node, "orientation");
+    if (orientation == "y") {
+      orientation_ = Orientation::y;
+    } else if (orientation == "x") {
+      orientation_ = Orientation::x;
+    } else {
+      fatal_error("Unrecognized orientation '" + orientation
+                  + "' for lattice " + std::to_string(id_));
+    }
+  } else {
+    orientation_ = Orientation::y;
   }
 
   // Read the lattice center.
@@ -457,14 +497,79 @@ HexLattice::HexLattice(pugi::xml_node lat_node)
 
   // Parse the universes.
   // Universes in hexagonal lattices are stored in a manner that represents
-  // a skewed coordinate system: (x, alpha) rather than (x, y).  There is
+  // a skewed coordinate system: (x, alpha) in case of 'y' orientation
+  // and (alpha,y) in 'x' one rather than (x, y).  There is
   // no obvious, direct relationship between the order of universes in the
   // input and the order that they will be stored in the skewed array so
   // the following code walks a set of index values across the skewed array
   // in a manner that matches the input order.  Note that i_x = 0, i_a = 0
-  // corresponds to the center of the hexagonal lattice.
-
+  // or i_a = 0, i_y = 0 corresponds to the center of the hexagonal lattice.
   universes_.resize((2*n_rings_-1) * (2*n_rings_-1) * n_axial_, C_NONE);
+  if (orientation_ == Orientation::y) {
+    fill_lattice_y(univ_words);
+  } else {
+    fill_lattice_x(univ_words);
+  }
+}
+
+//==============================================================================
+
+void
+HexLattice::fill_lattice_x(const std::vector<std::string>& univ_words)
+{
+  int input_index = 0;
+  for (int m = 0; m < n_axial_; m++) {
+    // Initialize lattice indecies.
+    int i_a = -(n_rings_ - 1);
+    int i_y = n_rings_ - 1;
+
+    // Map upper region of hexagonal lattice which is found in the
+    // first n_rings-1 rows of the input.
+    for (int k = 0; k < n_rings_-1; k++) {
+
+      // Iterate over the input columns.
+      for (int j = 0; j < k+n_rings_; j++) {
+        int indx = (2*n_rings_-1)*(2*n_rings_-1) * m
+                    + (2*n_rings_-1) * (i_y+n_rings_-1)
+                    + (i_a+n_rings_-1);
+        universes_[indx] = std::stoi(univ_words[input_index]);
+        input_index++;
+        // Move to the next right neighbour cell
+        i_a += 1;
+      }
+
+      // Return the lattice index to the start of the current row.
+      i_a = -(n_rings_ - 1);
+      i_y -= 1;
+    }
+
+    // Map the lower region from the centerline of cart to down side
+    for (int k = 0; k < n_rings_; k++) {
+      // Walk the index to the lower-right neighbor of the last row start.
+      i_a = -(n_rings_ - 1) + k;
+
+      // Iterate over the input columns.
+      for (int j = 0; j < 2*n_rings_-k-1; j++) {
+        int indx = (2*n_rings_-1)*(2*n_rings_-1) * m
+                    + (2*n_rings_-1) * (i_y+n_rings_-1)
+                    + (i_a+n_rings_-1);
+        universes_[indx] = std::stoi(univ_words[input_index]);
+        input_index++;
+        // Move to the next right neighbour cell
+        i_a += 1;
+      }
+
+      // Return lattice index to start of current row.
+      i_y -= 1;
+    }
+  }
+}
+
+//==============================================================================
+
+void
+HexLattice::fill_lattice_y(const std::vector<std::string>& univ_words)
+{
   int input_index = 0;
   for (int m = 0; m < n_axial_; m++) {
     // Initialize lattice indecies.
@@ -585,9 +690,33 @@ std::pair<double, std::array<int, 3>>
 HexLattice::distance(Position r, Direction u, const std::array<int, 3>& i_xyz)
 const
 {
-  // Compute the direction on the hexagonal basis.
-  double beta_dir = u.x * std::sqrt(3.0) / 2.0 + u.y / 2.0;
-  double gamma_dir = u.x * std::sqrt(3.0) / 2.0 - u.y / 2.0;
+  // Short description of the direction vectors used here.  The beta, gamma, and
+  // delta vectors point towards the flat sides of each hexagonal tile.
+  // Y - orientation:
+  //   basis0 = (1, 0)
+  //   basis1 = (-1/sqrt(3), 1)   = +120 degrees from basis0
+  //   beta   = (sqrt(3)/2, 1/2)  = +30 degrees from basis0
+  //   gamma  = (sqrt(3)/2, -1/2) = -60 degrees from beta
+  //   delta  = (0, 1)            = +60 degrees from beta
+  // X - orientation:
+  //   basis0 = (1/sqrt(3), -1)
+  //   basis1 = (0, 1)            = +120 degrees from basis0
+  //   beta   = (1, 0)            = +30 degrees from basis0
+  //   gamma  = (1/2, -sqrt(3)/2) = -60 degrees from beta
+  //   delta  = (1/2, sqrt(3)/2)  = +60 degrees from beta
+  // The z-axis is considered separately.
+  double beta_dir;
+  double gamma_dir;
+  double delta_dir;
+  if (orientation_ == Orientation::y) {
+    beta_dir = u.x * std::sqrt(3.0) / 2.0  + u.y / 2.0;
+    gamma_dir = u.x * std::sqrt(3.0) / 2.0  - u.y / 2.0;
+    delta_dir = u.y;
+  } else {
+    beta_dir = u.x;
+    gamma_dir = u.x / 2.0  - u.y * std::sqrt(3.0) / 2.0;
+    delta_dir = u.x / 2.0  + u.y * std::sqrt(3.0) / 2.0;
+  }
 
   // Note that hexagonal lattice distance calculations are performed
   // using the particle's coordinates relative to the neighbor lattice
@@ -595,7 +724,7 @@ const
   // because there is significant disagreement between neighboring cells
   // on where the lattice boundary is due to finite precision issues.
 
-  // Upper-right and lower-left sides.
+  // beta direction
   double d {INFTY};
   std::array<int, 3> lattice_trans;
   double edge = -copysign(0.5*pitch_[0], beta_dir);  // Oncoming edge
@@ -607,7 +736,12 @@ const
     const std::array<int, 3> i_xyz_t {i_xyz[0]-1, i_xyz[1], i_xyz[2]};
     r_t = get_local_position(r, i_xyz_t);
   }
-  double beta = r_t.x * std::sqrt(3.0) / 2.0 + r_t.y / 2.0;
+  double beta;
+  if (orientation_ == Orientation::y) {
+    beta = r_t.x * std::sqrt(3.0) / 2.0 + r_t.y / 2.0;
+  } else {
+    beta = r_t.x;
+  }
   if ((std::abs(beta - edge) > FP_PRECISION) && beta_dir != 0) {
     d = (edge - beta) / beta_dir;
     if (beta_dir > 0) {
@@ -617,7 +751,7 @@ const
     }
   }
 
-  // Lower-right and upper-left sides.
+  // gamma direction
   edge = -copysign(0.5*pitch_[0], gamma_dir);
   if (gamma_dir > 0) {
     const std::array<int, 3> i_xyz_t {i_xyz[0]+1, i_xyz[1]-1, i_xyz[2]};
@@ -626,7 +760,12 @@ const
     const std::array<int, 3> i_xyz_t {i_xyz[0]-1, i_xyz[1]+1, i_xyz[2]};
     r_t = get_local_position(r, i_xyz_t);
   }
-  double gamma = r_t.x * std::sqrt(3.0) / 2.0 - r_t.y / 2.0;
+  double gamma;
+  if (orientation_ == Orientation::y) {
+    gamma = r_t.x * std::sqrt(3.0) / 2.0 - r_t.y / 2.0;
+  } else {
+    gamma = r_t.x  / 2.0 - r_t.y * std::sqrt(3.0) / 2.0;
+  }
   if ((std::abs(gamma - edge) > FP_PRECISION) && gamma_dir != 0) {
     double this_d = (edge - gamma) / gamma_dir;
     if (this_d < d) {
@@ -639,19 +778,25 @@ const
     }
   }
 
-  // Upper and lower sides.
-  edge = -copysign(0.5*pitch_[0], u.y);
-  if (u.y > 0) {
+  // delta direction
+  edge = -copysign(0.5*pitch_[0], delta_dir);
+  if (delta_dir > 0) {
     const std::array<int, 3> i_xyz_t {i_xyz[0], i_xyz[1]+1, i_xyz[2]};
     r_t = get_local_position(r, i_xyz_t);
   } else {
     const std::array<int, 3> i_xyz_t {i_xyz[0], i_xyz[1]-1, i_xyz[2]};
     r_t = get_local_position(r, i_xyz_t);
   }
-  if ((std::abs(r_t.y - edge) > FP_PRECISION) && u.y != 0) {
-    double this_d = (edge - r_t.y) / u.y;
+  double delta;
+  if (orientation_ == Orientation::y) {
+    delta =  r_t.y;
+  } else {
+    delta = r_t.x  / 2.0 + r_t.y * std::sqrt(3.0) / 2.0;
+  }
+  if ((std::abs(delta - edge) > FP_PRECISION) && delta_dir != 0) {
+    double this_d = (edge - delta) / delta_dir;
     if (this_d < d) {
-      if (u.y > 0) {
+      if (delta_dir > 0) {
         lattice_trans = {0, 1, 0};
       } else {
         lattice_trans = {0, -1, 0};
@@ -684,67 +829,99 @@ const
 //==============================================================================
 
 std::array<int, 3>
-HexLattice::get_indices(Position r) const
+HexLattice::get_indices(Position r, Direction u) const
 {
   // Offset the xyz by the lattice center.
   Position r_o {r.x - center_.x, r.y - center_.y, r.z};
   if (is_3d_) {r_o.z -= center_.z;}
 
-  // Index the z direction.
-  std::array<int, 3> out;
+  // Index the z direction, accounting for coincidence
+  int iz = 0;
   if (is_3d_) {
-    out[2] = static_cast<int>(std::ceil(r_o.z / pitch_[1] + 0.5 * n_axial_))-1;
-  } else {
-    out[2] = 0;
+    double iz_ {r_o.z / pitch_[1] + 0.5 * n_axial_};
+    long iz_close {std::lround(iz_)};
+    if (coincident(iz_, iz_close)) {
+      iz = (u.z > 0) ? iz_close : iz_close - 1;
+    } else {
+      iz = std::floor(iz_);
+    }
   }
 
-  // Convert coordinates into skewed bases.  The (x, alpha) basis is used to
-  // find the index of the global coordinates to within 4 cells.
-  double alpha = r_o.y - r_o.x / std::sqrt(3.0);
-  out[0] = static_cast<int>(std::floor(r_o.x
-                                       / (0.5*std::sqrt(3.0) * pitch_[0])));
-  out[1] = static_cast<int>(std::floor(alpha / pitch_[0]));
+  int i1, i2;
+  if (orientation_ == Orientation::y) {
+    // Convert coordinates into skewed bases.  The (x, alpha) basis is used to
+    // find the index of the global coordinates to within 4 cells.
+    double alpha = r_o.y - r_o.x / std::sqrt(3.0);
+    i1 = std::floor(r_o.x / (0.5*std::sqrt(3.0) * pitch_[0]));
+    i2 = std::floor(alpha / pitch_[0]);
+  } else {
+    // Convert coordinates into skewed bases.  The (alpha, y) basis is used to
+    // find the index of the global coordinates to within 4 cells.
+    double alpha = r_o.y - r_o.x * std::sqrt(3.0);
+    i1 = std::floor(-alpha / (std::sqrt(3.0) * pitch_[0]));
+    i2 = std::floor(r_o.y / (0.5*std::sqrt(3.0) * pitch_[0]));
+  }
 
-  // Add offset to indices (the center cell is (i_x, i_alpha) = (0, 0) but
+  // Add offset to indices (the center cell is (i1, i2) = (0, 0) but
   // the array is offset so that the indices never go below 0).
-  out[0] += n_rings_-1;
-  out[1] += n_rings_-1;
+  i1 += n_rings_-1;
+  i2 += n_rings_-1;
 
   // Calculate the (squared) distance between the particle and the centers of
   // the four possible cells.  Regular hexagonal tiles form a Voronoi
   // tessellation so the xyz should be in the hexagonal cell that it is closest
   // to the center of.  This method is used over a method that uses the
   // remainders of the floor divisions above because it provides better finite
-  // precision performance.  Squared distances are used becasue they are more
+  // precision performance.  Squared distances are used because they are more
   // computationally efficient than normal distances.
-  int k {1};
-  int k_min {1};
+
+  // COINCIDENCE CHECK
+  // if a distance to center, d, is within the coincidence tolerance of the
+  // current minimum distance, d_min, the particle is on an edge or vertex.
+  // In this case, the dot product of the position vector and direction vector
+  // for the current indices, dp, and the dot product for the currently selected
+  // indices, dp_min, are compared. The cell which the particle is moving into
+  // is kept (i.e. the cell with the lowest dot product as the vectors will be
+  // completely opposed if the particle is moving directly toward the center of
+  // the cell).
+  int i1_chg {};
+  int i2_chg {};
   double d_min {INFTY};
+  double dp_min {INFTY};
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 2; j++) {
-      const std::array<int, 3> i_xyz {out[0] + j, out[1] + i, 0};
+      // get local coordinates
+      const std::array<int, 3> i_xyz {i1 + j, i2 + i, 0};
       Position r_t = get_local_position(r, i_xyz);
+      // calculate distance
       double d = r_t.x*r_t.x + r_t.y*r_t.y;
-      if (d < d_min) {
+      // check for coincidence. Because the numerical error incurred
+      // in hex geometry is higher than other geometries, the relative
+      // coincidence is checked here so that coincidence is successfully
+      // detected on large hex lattice with particles far from the origin
+      // which have rounding errors larger than the FP_COINCIDENT thresdhold.
+      bool on_boundary = coincident(1.0, d_min/d);
+      if (d < d_min || on_boundary) {
+        // normalize r_t and find dot product
+        r_t /= std::sqrt(d);
+        double dp = u.x * r_t.x + u.y * r_t.y;
+        // do not update values if particle is on a
+        // boundary and not moving into this cell
+        if (on_boundary && dp > dp_min) continue;
+        // update values
         d_min = d;
-        k_min = k;
+        i1_chg = j;
+        i2_chg = i;
+        dp_min = dp;
       }
-      k++;
     }
   }
 
-  // Select the minimum squared distance which corresponds to the cell the
-  // coordinates are in.
-  if (k_min == 2) {
-    out[0] += 1;
-  } else if (k_min == 3) {
-    out[1] += 1;
-  } else if (k_min == 4) {
-    out[0] += 1;
-    out[1] += 1;
-  }
+  // update outgoing indices
+  i1 += i1_chg;
+  i2 += i2_chg;
 
-  return out;
+  return {i1, i2, iz};
 }
 
 //==============================================================================
@@ -753,14 +930,25 @@ Position
 HexLattice::get_local_position(Position r, const std::array<int, 3> i_xyz)
 const
 {
-  // x_l = x_g - (center + pitch_x*cos(30)*index_x)
-  r.x -= center_.x + std::sqrt(3.0)/2.0 * (i_xyz[0] - n_rings_ + 1) * pitch_[0];
-  // y_l = y_g - (center + pitch_x*index_x + pitch_y*sin(30)*index_y)
-  r.y -= (center_.y + (i_xyz[1] - n_rings_ + 1) * pitch_[0]
-          + (i_xyz[0] - n_rings_ + 1) * pitch_[0] / 2.0);
-  if (is_3d_) {
-    r.z -= center_.z - (0.5 * n_axial_ - i_xyz[2] - 0.5) * pitch_[1];
+  if (orientation_ == Orientation::y) {
+    // x_l = x_g - (center + pitch_x*cos(30)*index_x)
+    r.x -= center_.x
+           + std::sqrt(3.0)/2.0 * (i_xyz[0] - n_rings_ + 1) * pitch_[0];
+    // y_l = y_g - (center + pitch_x*index_x + pitch_y*sin(30)*index_y)
+    r.y -= (center_.y + (i_xyz[1] - n_rings_ + 1) * pitch_[0]
+            + (i_xyz[0] - n_rings_ + 1) * pitch_[0] / 2.0);
+  } else {
+    // x_l = x_g - (center + pitch_x*index_a + pitch_y*sin(30)*index_y)
+    r.x -= (center_.x + (i_xyz[0] - n_rings_ + 1) * pitch_[0]
+            + (i_xyz[1] - n_rings_ + 1) * pitch_[0] / 2.0);
+    // y_l = y_g - (center + pitch_y*cos(30)*index_y)
+    r.y -= center_.y
+           + std::sqrt(3.0)/2.0 * (i_xyz[1] - n_rings_ + 1) * pitch_[0];
   }
+
+  if (is_3d_) {
+      r.z -= center_.z - (0.5 * n_axial_ - i_xyz[2] - 0.5) * pitch_[1];
+    }
 
   return r;
 }
@@ -772,7 +960,6 @@ HexLattice::is_valid_index(int indx) const
 {
   int nx {2*n_rings_ - 1};
   int ny {2*n_rings_ - 1};
-  int nz {n_axial_};
   int iz = indx / (nx * ny);
   int iy = (indx - nx*ny*iz) / nx;
   int ix = indx - nx*ny*iz - nx*iy;
@@ -820,6 +1007,11 @@ HexLattice::to_hdf5_inner(hid_t lat_group) const
   write_string(lat_group, "type", "hexagonal", false);
   write_dataset(lat_group, "n_rings", n_rings_);
   write_dataset(lat_group, "n_axial", n_axial_);
+  if (orientation_ == Orientation::y) {
+    write_string(lat_group, "orientation", "y", false);
+  } else {
+    write_string(lat_group, "orientation", "x", false);
+  }
   if (is_3d_) {
     write_dataset(lat_group, "pitch", pitch_);
     write_dataset(lat_group, "center", center_);
@@ -834,7 +1026,7 @@ HexLattice::to_hdf5_inner(hid_t lat_group) const
   hsize_t nx {static_cast<hsize_t>(2*n_rings_ - 1)};
   hsize_t ny {static_cast<hsize_t>(2*n_rings_ - 1)};
   hsize_t nz {static_cast<hsize_t>(n_axial_)};
-  int out[nx*ny*nz];
+  std::vector<int> out(nx*ny*nz);
 
   for (int m = 0; m < nz; m++) {
     for (int k = 0; k < ny; k++) {
@@ -847,58 +1039,41 @@ HexLattice::to_hdf5_inner(hid_t lat_group) const
           // This array position is never used; put a -1 to indicate this.
           out[indx] = -1;
         } else {
-          out[indx] = universes[universes_[indx]]->id_;
+          out[indx] = model::universes[universes_[indx]]->id_;
         }
       }
     }
   }
 
   hsize_t dims[3] {nz, ny, nx};
-  write_int(lat_group, 3, dims, "universes", out, false);
+  write_int(lat_group, 3, dims, "universes", out.data(), false);
 }
 
 //==============================================================================
 // Non-method functions
 //==============================================================================
 
-extern "C" void
-read_lattices(pugi::xml_node *node)
+void read_lattices(pugi::xml_node node)
 {
-  for (pugi::xml_node lat_node : node->children("lattice")) {
-    lattices.push_back(new RectLattice(lat_node));
+  for (pugi::xml_node lat_node : node.children("lattice")) {
+    model::lattices.push_back(std::make_unique<RectLattice>(lat_node));
   }
-  for (pugi::xml_node lat_node : node->children("hex_lattice")) {
-    lattices.push_back(new HexLattice(lat_node));
+  for (pugi::xml_node lat_node : node.children("hex_lattice")) {
+    model::lattices.push_back(std::make_unique<HexLattice>(lat_node));
   }
 
   // Fill the lattice map.
-  for (int i_lat = 0; i_lat < lattices.size(); i_lat++) {
-    int id = lattices[i_lat]->id_;
-    auto in_map = lattice_map.find(id);
-    if (in_map == lattice_map.end()) {
-      lattice_map[id] = i_lat;
+  for (int i_lat = 0; i_lat < model::lattices.size(); i_lat++) {
+    int id = model::lattices[i_lat]->id_;
+    auto in_map = model::lattice_map.find(id);
+    if (in_map == model::lattice_map.end()) {
+      model::lattice_map[id] = i_lat;
     } else {
       std::stringstream err_msg;
       err_msg << "Two or more lattices use the same unique ID: " << id;
       fatal_error(err_msg);
     }
   }
-}
-
-//==============================================================================
-// Fortran compatibility functions
-//==============================================================================
-
-extern "C" {
-  Lattice* lattice_pointer(int lat_ind) {return lattices[lat_ind];}
-
-  int32_t lattice_id(Lattice *lat) {return lat->id_;}
-
-  bool lattice_are_valid_indices(Lattice *lat, const int i_xyz[3])
-  {return lat->are_valid_indices(i_xyz);}
-
-  int32_t lattice_offset(Lattice *lat, int map, const int i_xyz[3])
-  {return lat->offset(map, i_xyz);}
 }
 
 } // namespace openmc

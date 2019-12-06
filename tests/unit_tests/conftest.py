@@ -1,6 +1,17 @@
 import openmc
 import pytest
 
+from tests.regression_tests import config
+
+
+@pytest.fixture(scope='module')
+def mpi_intracomm():
+    if config['mpi']:
+        from mpi4py import MPI
+        return MPI.COMM_WORLD
+    else:
+        return None
+
 
 @pytest.fixture(scope='module')
 def uo2():
@@ -46,7 +57,7 @@ def cell_with_lattice():
     m_inside = [openmc.Material(), openmc.Material(), None, openmc.Material()]
     m_outside = openmc.Material()
 
-    cyl = openmc.ZCylinder(R=1.0)
+    cyl = openmc.ZCylinder(r=1.0)
     inside_cyl = openmc.Cell(fill=m_inside, region=-cyl)
     outside_cyl = openmc.Cell(fill=m_outside, region=+cyl)
     univ = openmc.Universe(cells=[inside_cyl, outside_cyl])
@@ -63,7 +74,7 @@ def cell_with_lattice():
 
 @pytest.fixture
 def mixed_lattice_model(uo2, water):
-    cyl = openmc.ZCylinder(R=0.4)
+    cyl = openmc.ZCylinder(r=0.4)
     c1 = openmc.Cell(fill=uo2, region=-cyl)
     c1.temperature = 600.0
     c2 = openmc.Cell(fill=water, region=+cyl)
@@ -97,11 +108,11 @@ def mixed_lattice_model(uo2, water):
         [empty_univ, u]
     ]
 
-    xmin = openmc.XPlane(x0=-d, boundary_type='periodic')
-    xmax = openmc.XPlane(x0=d, boundary_type='periodic')
+    xmin = openmc.XPlane(-d, 'periodic')
+    xmax = openmc.XPlane(d, 'periodic')
     xmin.periodic_surface = xmax
-    ymin = openmc.YPlane(y0=-d, boundary_type='periodic')
-    ymax = openmc.YPlane(y0=d, boundary_type='periodic')
+    ymin = openmc.YPlane(-d, 'periodic')
+    ymax = openmc.YPlane(d, 'periodic')
     main_cell = openmc.Cell(fill=rect_lattice,
                             region=+xmin & -xmax & +ymin & -ymax)
 

@@ -17,7 +17,8 @@ system for installing multiple versions of software packages and their
 dependencies and switching easily between them. `conda-forge
 <https://conda-forge.github.io/>`_ is a community-led conda channel of
 installable packages. For instructions on installing conda, please consult their
-`documentation <http://conda.pydata.org/docs/install/quick.html>`_.
+`documentation
+<https://docs.conda.io/projects/conda/en/latest/user-guide/install/>`_.
 
 Once you have `conda` installed on your system, add the `conda-forge` channel to
 your configuration with:
@@ -85,25 +86,12 @@ Prerequisites
 .. admonition:: Required
    :class: error
 
-    * A Fortran compiler such as gfortran_
-
-      In order to compile OpenMC, you will need to have a Fortran compiler
-      installed on your machine. Since a number of Fortran 2003/2008 features
-      are used in the code, it is recommended that you use the latest version of
-      whatever compiler you choose. For gfortran_, it is necessary to use
-      version 4.8.0 or above.
-
-      If you are using Debian or a Debian derivative such as Ubuntu, you can
-      install the gfortran compiler using the following command::
-
-          sudo apt install gfortran
-
     * A C/C++ compiler such as gcc_
 
-      OpenMC includes various source files written in C and C++,
-      respectively. These source files have been tested to work with a wide
-      variety of compilers. If you are using a Debian-based distribution, you
-      can install the g++ compiler using the following command::
+      OpenMC's core codebase is written in C++. The source files have been
+      tested to work with a wide variety of compilers. If you are using a
+      Debian-based distribution, you can install the g++ compiler using the
+      following command::
 
           sudo apt install g++
 
@@ -132,7 +120,7 @@ Prerequisites
       respectively. To link against a parallel HDF5 library, make sure to set
       the HDF5_PREFER_PARALLEL CMake option, e.g.::
 
-          FC=mpifort.mpich cmake -DHDF5_PREFER_PARALLEL=on ..
+          CXX=mpicxx.mpich cmake -DHDF5_PREFER_PARALLEL=on ..
 
       Note that the exact package names may vary depending on your particular
       distribution and version.
@@ -141,7 +129,7 @@ Prerequisites
       recommend that your HDF5 installation be built with parallel I/O
       features. An example of configuring HDF5_ is listed below::
 
-           FC=mpifort ./configure --enable-parallel
+          CC=mpicc ./configure --enable-parallel
 
       You may omit ``--enable-parallel`` if you want to compile HDF5_ in serial.
 
@@ -159,14 +147,24 @@ Prerequisites
           sudo apt install mpich libmpich-dev
           sudo apt install openmpi-bin libopenmpi-dev
 
+    * DAGMC_ toolkit for simulation using CAD-based geometries
+
+      OpenMC supports particle tracking in CAD-based geometries via the Direct
+      Accelerated Geometry Monte Carlo (DAGMC) toolkit (`installation
+      instructions
+      <https://svalinn.github.io/DAGMC/install/dag_multiple.html>`_). For use in
+      OpenMC, only the ``MOAB_DIR`` and ``BUILD_TALLY`` variables need to be
+      specified in the CMake configuration step.
+
     * git_ version control software for obtaining source code
 
-.. _gfortran: http://gcc.gnu.org/wiki/GFortran
+
 .. _gcc: https://gcc.gnu.org/
 .. _CMake: http://www.cmake.org
 .. _OpenMPI: http://www.open-mpi.org
 .. _MPICH: http://www.mpich.org
 .. _HDF5: https://www.hdfgroup.org/solutions/hdf5/
+.. _DAGMC: https://svalinn.github.io/DAGMC/index.html
 
 Obtaining the Source
 --------------------
@@ -229,19 +227,22 @@ profile
   Enables profiling using the GNU profiler, gprof.
 
 optimize
-  Enables high-optimization using compiler-dependent flags. For gfortran and
-  Intel Fortran, this compiles with -O3.
+  Enables high-optimization using compiler-dependent flags. For gcc and
+  Intel C++, this compiles with -O3.
 
 openmp
-  Enables shared-memory parallelism using the OpenMP API. The Fortran compiler
+  Enables shared-memory parallelism using the OpenMP API. The C++ compiler
   being used must support OpenMP. (Default: on)
+
+dagmc
+  Enables use of CAD-based DAGMC_ geometries. Please see the note about DAGMC in
+  the optional dependencies list for more information on this feature. The
+  installation directory for DAGMC should also be defined as `DAGMC_ROOT` in the
+  CMake configuration command. (Default: off)
 
 coverage
   Compile and link code instrumented for coverage analysis. This is typically
   used in conjunction with gcov_.
-
-maxcoord
-  Maximum number of nested coordinate levels in geometry. Defaults to 10.
 
 To set any of these options (e.g. turning on debug mode), the following form
 should be used:
@@ -257,14 +258,11 @@ should be used:
 Compiling with MPI
 ++++++++++++++++++
 
-To compile with MPI, set the :envvar:`FC`, :envvar:`CC`, and :envvar:`CXX`
-environment variables to the path to the MPI Fortran, C, and C++ wrappers,
-respectively. For example, in a bash shell:
+To compile with MPI, set the :envvar:`CXX` environment variable to the path to
+the MPI C++ wrapper. For example, in a bash shell:
 
 .. code-block:: sh
 
-    export FC=mpifort
-    export CC=mpicc
     export CXX=mpicxx
     cmake /path/to/openmc
 
@@ -273,12 +271,12 @@ i.e.
 
 .. code-block:: sh
 
-    FC=mpifort CC=mpicc CXX=mpicxx cmake /path/to/openmc
+    CXX=mpicxx cmake /path/to/openmc
 
 Selecting HDF5 Installation
 +++++++++++++++++++++++++++
 
-CMakeLists.txt searches for the ``h5fc`` or ``h5pfc`` HDF5 Fortran wrapper on
+CMakeLists.txt searches for the ``h5cc`` or ``h5pcc`` HDF5 C wrapper on
 your PATH environment variable and subsequently uses it to determine library
 locations and compile flags. If you have multiple installations of HDF5 or one
 that does not appear on your PATH, you can set the HDF5_ROOT environment
@@ -289,8 +287,8 @@ variable to the root directory of the HDF5 installation, e.g.
     export HDF5_ROOT=/opt/hdf5/1.8.15
     cmake /path/to/openmc
 
-This will cause CMake to search first in /opt/hdf5/1.8.15/bin for ``h5fc`` /
-``h5pfc`` before it searches elsewhere. As noted above, an environment variable
+This will cause CMake to search first in /opt/hdf5/1.8.15/bin for ``h5cc`` /
+``h5pcc`` before it searches elsewhere. As noted above, an environment variable
 can typically be set for a single command, i.e.
 
 .. code-block:: sh
@@ -342,14 +340,13 @@ control generation of vector instructions to see what configuration gives
 optimal performance for your target problem.
 
 For the first generation Knights Corner architecture, it is necessary to
-cross-compile OpenMC. If you are using the Intel Fortran compiler, it is
-necessary to specify that all objects be compiled with the ``-mmic`` flag as
-follows:
+cross-compile OpenMC. If you are using the Intel compiler, it is necessary to
+specify that all objects be compiled with the ``-mmic`` flag as follows:
 
 .. code-block:: sh
 
     mkdir build && cd build
-    FC=ifort CC=icc CXX=icpc FFLAGS=-mmic cmake -Dopenmp=on ..
+    CXX=icpc CXXFLAGS=-mmic cmake -Dopenmp=on ..
     make
 
 Note that unless an HDF5 build for the Intel Xeon Phi (Knights Corner) is
@@ -448,7 +445,7 @@ as for OpenMC.
 .. admonition:: Optional
    :class: note
 
-   `mpi4py <http://mpi4py.scipy.org/>`_
+   `mpi4py <https://mpi4py.readthedocs.io/en/stable/>`_
       mpi4py provides Python bindings to MPI for running distributed-memory
       parallel runs. This package is needed if you plan on running depletion
       simulations in parallel using MPI.
@@ -459,10 +456,6 @@ as for OpenMC.
 
    `vtk <http://www.vtk.org/>`_
       The Python VTK bindings are needed to convert voxel and track files to VTK
-      format.
-
-   `silomesh <https://github.com/nhorelik/silomesh>`_
-      The silomesh package is needed to convert voxel and track files to SILO
       format.
 
    `pytest <https://docs.pytest.org>`_
@@ -491,9 +484,9 @@ Make sure to replace the last string on the second line with the path to the
 schemas.xml file in your own OpenMC source directory.
 
 .. _GNU Emacs: http://www.gnu.org/software/emacs/
-.. _validation: http://en.wikipedia.org/wiki/XML_validation
+.. _validation: https://en.wikipedia.org/wiki/XML_validation
 .. _RELAX NG: http://relaxng.org/
 .. _NNDC: http://www.nndc.bnl.gov/endf/b7.1/acefiles.html
 .. _ctest: http://www.cmake.org/cmake/help/v2.8.12/ctest.html
-.. _Conda: https://conda.io/docs/
+.. _Conda: https://docs.conda.io/en/latest/
 .. _pip: https://pip.pypa.io/en/stable/

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from collections import Mapping, Callable
+from collections.abc import Mapping, Callable
 import os
 
 import numpy as np
@@ -9,19 +9,17 @@ import pytest
 import openmc.data
 
 
-_ENDF_DATA = os.environ['OPENMC_ENDF_DATA']
-
-
 @pytest.fixture(scope='module')
 def elements_endf():
     """Dictionary of element ENDF data indexed by atomic symbol."""
+    endf_data = os.environ['OPENMC_ENDF_DATA']
     elements = {'H': 1, 'O': 8, 'Al': 13, 'Cu': 29, 'Ag': 47, 'U': 92, 'Pu': 94}
     data = {}
     for symbol, Z in elements.items():
         p_file = 'photoat-{:03}_{}_000.endf'.format(Z, symbol)
-        p_path = os.path.join(_ENDF_DATA, 'photoat', p_file)
+        p_path = os.path.join(endf_data, 'photoat', p_file)
         a_file = 'atom-{:03}_{}_000.endf'.format(Z, symbol)
-        a_path = os.path.join(_ENDF_DATA, 'atomic_relax', a_file)
+        a_path = os.path.join(endf_data, 'atomic_relax', a_file)
         data[symbol] = openmc.data.IncidentPhoton.from_endf(p_path, a_path)
     return data
 
@@ -71,10 +69,20 @@ def test_transitions(element):
         assert sum(matrix['probability']) == pytest.approx(1.0)
 
 
-@pytest.mark.parametrize('element', ['H', 'Al', 'Ag'], indirect=True)
-def test_bremsstrahlung(element):
+@pytest.mark.parametrize(
+    'element, I, i_shell, ionization_energy, num_electrons', [
+        ('H', 19.2, 0, 13.6, 1),
+        ('O', 95.0, 2, 13.62, 4),
+        ('U', 890.0, 25, 6.033, -3)
+    ],
+    indirect=['element']
+)
+def test_bremsstrahlung(element, I, i_shell, ionization_energy, num_electrons):
     brems = element.bremsstrahlung
     assert isinstance(brems, Mapping)
+    assert brems['I'] == I
+    assert brems['num_electrons'][i_shell] == num_electrons
+    assert brems['ionization_energy'][i_shell] == ionization_energy
     assert np.all(np.diff(brems['electron_energy']) > 0.0)
     assert np.all(np.diff(brems['photon_energy']) > 0.0)
     assert brems['photon_energy'][0] == 0.0
@@ -114,25 +122,25 @@ def test_reactions(element, reaction):
         reactions[18]
 
 
-@pytest.mark.parametrize(
-    'element, I', [
-        ('H', 19.2),
-        ('O', 95.0),
-        ('U', 890.0)
-    ],
-    indirect=['element']
-)
-def test_stopping_powers(element, I):
-    stopping_powers = element.stopping_powers
-    assert isinstance(stopping_powers, Mapping)
-    assert stopping_powers['I'] == I
-    assert np.all(np.diff(stopping_powers['energy']) > 0.0)
-    assert len(stopping_powers['s_collision']) == 200
-    assert len(stopping_powers['s_radiative']) == 200
-
-
 @pytest.mark.parametrize('element', ['Pu'], indirect=True)
 def test_export_to_hdf5(tmpdir, element):
     filename = str(tmpdir.join('tmp.h5'))
     element.export_to_hdf5(filename)
     assert os.path.exists(filename)
+    # Read in data from hdf5
+    element2 = openmc.data.IncidentPhoton.from_hdf5(filename)
+    # Check for some cross section and datasets of element and element2
+    energy = np.logspace(np.log10(1.0), np.log10(1.0e10), num=100)
+    for mt in (502, 504, 515, 517, 522, 541, 570):
+        xs = element[mt].xs(energy)
+        xs2 = element2[mt].xs(energy)
+        assert np.allclose(xs, xs2)
+    assert element[502].scattering_factor == element2[502].scattering_factor
+    assert element.atomic_relaxation.transitions['O3'].equals(
+           element2.atomic_relaxation.transitions['O3'])
+    assert (element.compton_profiles['binding_energy'] ==
+           element2.compton_profiles['binding_energy']).all()
+    assert (element.bremsstrahlung['electron_energy'] ==
+           element2.bremsstrahlung['electron_energy']).all()
+    # Export to hdf5 again
+    element2.export_to_hdf5(filename, 'w')

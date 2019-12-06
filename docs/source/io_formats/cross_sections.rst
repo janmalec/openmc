@@ -25,9 +25,10 @@ node. For example,
 ``<library>`` Element
 ---------------------
 
-The ``<library>`` element indicates where an HDF5 cross section file is located,
-whether it contains incident neutron or thermal scattering data, and what
-materials are listed within. It has the following attributes:
+The ``<library>`` element indicates where an HDF5 data file is located, whether
+it contains incident neutron, incident photon, thermal scattering, or windowed
+multipole data, and what materials are listed within. It has the following
+attributes:
 
   :materials:
 
@@ -48,4 +49,22 @@ materials are listed within. It has the following attributes:
     directory containing the ``cross_sections.xml`` file.
 
   :type:
-    The type of data contained in the file, either 'neutron' or 'thermal'.
+    The type of data contained in the file. Accepted values are 'neutron',
+    'thermal', 'photon', and 'wmp'.
+
+.. _depletion_element:
+
+-----------------------------
+``<depletion_chain>`` Element
+-----------------------------
+
+The ``<depletion_chain>`` element indicates the location of the depletion chain file.
+This file contains information describing how nuclides decay and transmute to other
+nuclides through the depletion process. This element has a single attribute, ``path``,
+pointing to the location of the chain file.
+
+.. code-block:: xml
+
+    <depletion_chain path="/opt/data/chain_endfb7.xml"/>
+
+The structure of the depletion chain file is explained in :ref:`io_depletion_chain`.

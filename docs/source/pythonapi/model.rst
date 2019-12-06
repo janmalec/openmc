@@ -11,9 +11,11 @@ Convenience Functions
    :template: myfunction.rst
 
    openmc.model.borated_water
-   openmc.model.get_hexagonal_prism
-   openmc.model.get_rectangular_prism
+   openmc.model.cylinder_from_points
+   openmc.model.hexagonal_prism
+   openmc.model.rectangular_prism
    openmc.model.subdivide
+   openmc.model.pin
 
 TRISO Fuel Modeling
 -------------------
@@ -37,7 +39,7 @@ Functions
    :template: myfunction.rst
 
    openmc.model.create_triso_lattice
-   openmc.model.pack_trisos
+   openmc.model.pack_spheres
 
 Model Container
 ---------------

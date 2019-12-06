@@ -18,21 +18,6 @@ path to the XML cross section listing when in continuous-energy mode, and the
 :envvar:`OPENMC_MG_CROSS_SECTIONS` environment variable will be used in
 multi-group mode.
 
-.. _multipole_library:
-
--------------------------------
-``<multipole_library>`` Element
--------------------------------
-
-The ``<multipole_library>`` element indicates the directory containing a
-windowed multipole library. If a windowed multipole library is available,
-OpenMC can use it for on-the-fly Doppler-broadening of resolved resonance range
-cross sections. If this element is absent from the settings.xml file, the
-:envvar:`OPENMC_MULTIPOLE_LIBRARY` environment variable will be used.
-
-  .. note:: The <temperature_multipole> element must also be set to "true" for
-    windowed multipole functionality.
-
 .. _material:
 
 ----------------------
@@ -57,8 +42,7 @@ Each ``material`` element can have the following attributes or sub-elements:
     Volume of the material in cm^3.
 
   :temperature:
-    An element with no attributes which is used to set the default temperature
-    of the material in Kelvin.
+    Temperature of the material in Kelvin.
 
     *Default*: If a material default temperature is not given and a cell
     temperature is not specified, the :ref:`global default temperature

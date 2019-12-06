@@ -4,8 +4,8 @@
 #ifndef OPENMC_CONSTANTS_H
 #define OPENMC_CONSTANTS_H
 
-#include <cmath>
 #include <array>
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -20,21 +20,22 @@ using double_4dvec = std::vector<std::vector<std::vector<std::vector<double>>>>;
 
 // OpenMC major, minor, and release numbers
 constexpr int VERSION_MAJOR {0};
-constexpr int VERSION_MINOR {10};
+constexpr int VERSION_MINOR {12};
 constexpr int VERSION_RELEASE {0};
+constexpr bool VERSION_DEV {true};
 constexpr std::array<int, 3> VERSION {VERSION_MAJOR, VERSION_MINOR, VERSION_RELEASE};
 
 // HDF5 data format
-constexpr int HDF5_VERSION[] {1, 0};
+constexpr int HDF5_VERSION[] {3, 0};
 
 // Version numbers for binary files
+constexpr std::array<int, 2> VERSION_STATEPOINT {17, 0};
 constexpr std::array<int, 2> VERSION_PARTICLE_RESTART {2, 0};
 constexpr std::array<int, 2> VERSION_TRACK {2, 0};
 constexpr std::array<int, 2> VERSION_SUMMARY {6, 0};
 constexpr std::array<int, 2> VERSION_VOLUME {1, 0};
-constexpr std::array<int, 2> VERSION_VOXEL {1, 0};
+constexpr std::array<int, 2> VERSION_VOXEL {2, 0};
 constexpr std::array<int, 2> VERSION_MGXS_LIBRARY {1, 0};
-constexpr char VERSION_MULTIPOLE[] {"v0.2"};
 
 // ============================================================================
 // ADJUSTABLE PARAMETERS
@@ -62,6 +63,7 @@ constexpr int MAX_SAMPLE {100000};
 
 // Maximum number of words in a single line, length of line, and length of
 // single word
+constexpr int MAX_LINE_LEN {250};
 constexpr int MAX_WORD_LEN {150};
 
 // Maximum number of external source spatial resamples to encounter before an
@@ -95,17 +97,18 @@ constexpr double N_AVOGADRO       {0.6022140857}; // Avogadro's number in 10^24/
 constexpr double K_BOLTZMANN      {8.6173303e-5}; // Boltzmann constant in eV/K
 
 // Electron subshell labels
-constexpr char SUBSHELLS[][4]  {
-  "K  ", "L1 ", "L2 ", "L3 ", "M1 ", "M2 ", "M3 ", "M4 ", "M5 ",
-  "N1 ", "N2 ", "N3 ", "N4 ", "N5 ", "N6 ", "N7 ", "O1 ", "O2 ",
-  "O3 ", "O4 ", "O5 ", "O6 ", "O7 ", "O8 ", "O9 ", "P1 ", "P2 ",
-  "P3 ", "P4 ", "P5 ", "P6 ", "P7 ", "P8 ", "P9 ", "P10", "P11",
-  "Q1 ", "Q2 ", "Q3 "
+constexpr std::array<const char*, 39> SUBSHELLS =  {
+  "K", "L1", "L2", "L3", "M1", "M2", "M3", "M4", "M5",
+  "N1", "N2", "N3", "N4", "N5", "N6", "N7", "O1", "O2",
+  "O3", "O4", "O5", "O6", "O7", "O8", "O9", "P1", "P2",
+  "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11",
+  "Q1", "Q2", "Q3"
 };
 
-// Void material
+// Void material and nuclide
 // TODO: refactor and remove
 constexpr int MATERIAL_VOID {-1};
+constexpr int NUCLIDE_NONE  {-1};
 
 // ============================================================================
 // CROSS SECTION RELATED CONSTANTS
@@ -125,6 +128,7 @@ constexpr int TEMPERATURE_INTERPOLATION {2};
 
 // Reaction types
 // TODO: Convert to enum
+constexpr int REACTION_NONE {0};
 constexpr int TOTAL_XS {1};
 constexpr int ELASTIC {2};
 constexpr int N_NONELASTIC {3};
@@ -223,6 +227,13 @@ constexpr int N_3P    {197};
 constexpr int N_N3P   {198};
 constexpr int N_3N2PA {199};
 constexpr int N_5N2P  {200};
+constexpr int N_XP    {203};
+constexpr int N_XD    {204};
+constexpr int N_XT    {205};
+constexpr int N_X3HE  {206};
+constexpr int N_XA    {207};
+constexpr int HEATING {301};
+constexpr int DAMAGE_ENERGY {444};
 constexpr int COHERENT {502};
 constexpr int INCOHERENT {504};
 constexpr int PAIR_PROD_ELEC {515};
@@ -241,6 +252,7 @@ constexpr int N_A0    {800};
 constexpr int N_AC    {849};
 constexpr int N_2N0   {875};
 constexpr int N_2NC   {891};
+constexpr int HEATING_LOCAL {901};
 
 constexpr std::array<int, 6> DEPLETION_RX {N_GAMMA, N_P, N_A, N_2N, N_3N, N_4N};
 
@@ -256,22 +268,23 @@ constexpr int LIBRARY_PHOTON {3};
 constexpr int LIBRARY_MULTIGROUP {4};
 
 // Probability table parameters
-constexpr int URR_CUM_PROB {1};
-constexpr int URR_TOTAL    {2};
-constexpr int URR_ELASTIC  {3};
-constexpr int URR_FISSION  {4};
-constexpr int URR_N_GAMMA  {5};
-constexpr int URR_HEATING  {6};
+constexpr int URR_CUM_PROB {0};
+constexpr int URR_TOTAL    {1};
+constexpr int URR_ELASTIC  {2};
+constexpr int URR_FISSION  {3};
+constexpr int URR_N_GAMMA  {4};
+constexpr int URR_HEATING  {5};
 
 // Maximum number of partial fission reactions
 constexpr int PARTIAL_FISSION_MAX {4};
 
 // Resonance elastic scattering methods
 // TODO: Convert to enum
-constexpr int RES_SCAT_ARES {1};
-constexpr int RES_SCAT_DBRC {2};
-constexpr int RES_SCAT_WCM {3};
-constexpr int RES_SCAT_CXS {4};
+enum class ResScatMethod {
+  rvs, // Relative velocity sampling
+  dbrc, // Doppler broadening rejection correction
+  cxs // Constant cross section
+};
 
 // Electron treatments
 // TODO: Convert to enum
@@ -314,9 +327,9 @@ constexpr int MG_GET_XS_CHI_DELAYED        {14};
 // TALLY-RELATED CONSTANTS
 
 // Tally result entries
-constexpr int RESULT_VALUE  {1};
-constexpr int RESULT_SUM    {2};
-constexpr int RESULT_SUM_SQ {3};
+constexpr int RESULT_VALUE  {0};
+constexpr int RESULT_SUM    {1};
+constexpr int RESULT_SUM_SQ {2};
 
 // Tally type
 // TODO: Convert to enum
@@ -334,6 +347,7 @@ constexpr int ESTIMATOR_COLLISION   {3};
 // TODO: Convert to enum
 constexpr int EVENT_SURFACE {-2};
 constexpr int EVENT_LATTICE {-1};
+constexpr int EVENT_KILL    {0};
 constexpr int EVENT_SCATTER {1};
 constexpr int EVENT_ABSORB  {2};
 
@@ -365,24 +379,6 @@ constexpr int NO_BIN_FOUND {-1};
 constexpr int FILTER_UNIVERSE       {1};
 constexpr int FILTER_MATERIAL       {2};
 constexpr int FILTER_CELL           {3};
-constexpr int FILTER_CELLBORN       {4};
-constexpr int FILTER_SURFACE        {5};
-constexpr int FILTER_MESH           {6};
-constexpr int FILTER_ENERGYIN       {7};
-constexpr int FILTER_ENERGYOUT      {8};
-constexpr int FILTER_DISTRIBCELL    {9};
-constexpr int FILTER_MU             {10};
-constexpr int FILTER_POLAR          {11};
-constexpr int FILTER_AZIMUTHAL      {12};
-constexpr int FILTER_DELAYEDGROUP   {13};
-constexpr int FILTER_ENERGYFUNCTION {14};
-constexpr int FILTER_CELLFROM       {15};
-constexpr int FILTER_MESHSURFACE    {16};
-constexpr int FILTER_LEGENDRE       {17};
-constexpr int FILTER_SPH_HARMONICS  {18};
-constexpr int FILTER_SPTL_LEGENDRE  {19};
-constexpr int FILTER_ZERNIKE        {20};
-constexpr int FILTER_PARTICLE       {21};
 
 // Mesh types
 constexpr int MESH_REGULAR {1};
@@ -401,27 +397,20 @@ constexpr int IN_BOTTOM  {10}; // z min
 constexpr int OUT_TOP    {11}; // z max
 constexpr int IN_TOP     {12}; // z max
 
-// Tally trigger types and threshold
-constexpr int VARIANCE           {1};
-constexpr int RELATIVE_ERROR     {2};
-constexpr int STANDARD_DEVIATION {3};
-
 // Global tally parameters
-constexpr int K_COLLISION   {1};
-constexpr int K_ABSORPTION  {2};
-constexpr int K_TRACKLENGTH {3};
-constexpr int LEAKAGE       {4};
+constexpr int N_GLOBAL_TALLIES {4};
+constexpr int K_COLLISION   {0};
+constexpr int K_ABSORPTION  {1};
+constexpr int K_TRACKLENGTH {2};
+constexpr int LEAKAGE       {3};
 
-// Differential tally independent variables
-constexpr int DIFF_DENSITY {1};
-constexpr int DIFF_NUCLIDE_DENSITY {2};
-constexpr int DIFF_TEMPERATURE {3};
-
+// Miscellaneous
 constexpr int C_NONE {-1};
+constexpr int F90_NONE {0}; //TODO: replace usage of this with C_NONE
 
 // Interpolation rules
 enum class Interpolation {
-  histogram, lin_lin, lin_log, log_lin, log_log
+  histogram = 1, lin_lin = 2, lin_log = 3, log_lin = 4, log_log = 5
 };
 
 // Run modes
@@ -430,6 +419,12 @@ constexpr int RUN_MODE_EIGENVALUE  {2};
 constexpr int RUN_MODE_PLOTTING    {3};
 constexpr int RUN_MODE_PARTICLE    {4};
 constexpr int RUN_MODE_VOLUME      {5};
+
+// ============================================================================
+// CMFD CONSTANTS
+
+// For non-accelerated regions on coarse mesh overlay
+constexpr int CMFD_NOACCEL {-1};
 
 } // namespace openmc
 

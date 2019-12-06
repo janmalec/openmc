@@ -16,16 +16,13 @@
 
 #include "openmc/error.h"
 #include "openmc/math_functions.h"
+#include "openmc/mgxs_interface.h"
 #include "openmc/random_lcg.h"
-#include "openmc/string_functions.h"
+#include "openmc/settings.h"
+#include "openmc/string_utils.h"
 
 
 namespace openmc {
-
-// Storage for the MGXS data
-std::vector<Mgxs> nuclides_MG;
-std::vector<Mgxs> macro_xs;
-
 
 //==============================================================================
 // Mgxs base-class methods
@@ -34,7 +31,7 @@ std::vector<Mgxs> macro_xs;
 void
 Mgxs::init(const std::string& in_name, double in_awr,
      const std::vector<double>& in_kTs, bool in_fissionable, int in_scatter_format,
-     int in_num_groups, int in_num_delayed_groups, bool in_is_isotropic,
+     bool in_is_isotropic,
      const std::vector<double>& in_polar, const std::vector<double>& in_azimuthal)
 {
   // Set the metadata
@@ -44,8 +41,6 @@ Mgxs::init(const std::string& in_name, double in_awr,
   kTs = xt::adapt(in_kTs);
   fissionable = in_fissionable;
   scatter_format = in_scatter_format;
-  num_groups = in_num_groups;
-  num_delayed_groups = in_num_delayed_groups;
   xs.resize(in_kTs.size());
   is_isotropic = in_is_isotropic;
   n_pol = in_polar.size();
@@ -66,9 +61,8 @@ Mgxs::init(const std::string& in_name, double in_awr,
 //==============================================================================
 
 void
-Mgxs::metadata_from_hdf5(hid_t xs_id, int in_num_groups,
-     int in_num_delayed_groups, const std::vector<double>& temperature,
-     double tolerance, std::vector<int>& temps_to_read, int& order_dim, int& method)
+Mgxs::metadata_from_hdf5(hid_t xs_id, const std::vector<double>& temperature,
+     std::vector<int>& temps_to_read, int& order_dim)
 {
   // get name
   char char_name[MAX_WORD_LEN];
@@ -88,7 +82,7 @@ Mgxs::metadata_from_hdf5(hid_t xs_id, int in_num_groups,
   // Determine the available temperatures
   hid_t kT_group = open_group(xs_id, "kTs");
   int num_temps = get_num_datasets(kT_group);
-  char* dset_names[num_temps];
+  char** dset_names = new char*[num_temps];
   for (int i = 0; i < num_temps; i++) {
     dset_names[i] = new char[151];
   }
@@ -103,24 +97,25 @@ Mgxs::metadata_from_hdf5(hid_t xs_id, int in_num_groups,
     // Done with dset_names, so delete it
     delete[] dset_names[i];
   }
+  delete[] dset_names;
   std::sort(available_temps.begin(), available_temps.end());
 
   // If only one temperature is available, lets just use nearest temperature
   // interpolation
-  if ((num_temps == 1) && (method == TEMPERATURE_INTERPOLATION)) {
+  if ((num_temps == 1) && (settings::temperature_method == TEMPERATURE_INTERPOLATION)) {
     warning("Cross sections for " + strtrim(name) + " are only available " +
             "at one temperature.  Reverting to the nearest temperature " +
             "method.");
-    method = TEMPERATURE_NEAREST;
+    settings::temperature_method = TEMPERATURE_NEAREST;
   }
 
-  switch(method) {
+  switch(settings::temperature_method) {
     case TEMPERATURE_NEAREST:
       // Determine actual temperatures to read
       for (const auto& T : temperature) {
         auto i_closest = xt::argmin(xt::abs(available_temps - T))[0];
         double temp_actual = available_temps[i_closest];
-        if (std::fabs(temp_actual - T) < tolerance) {
+        if (std::fabs(temp_actual - T) < settings::temperature_tolerance) {
           if (std::find(temps_to_read.begin(), temps_to_read.end(), std::round(temp_actual))
               == temps_to_read.end()) {
             temps_to_read.push_back(std::round(temp_actual));
@@ -269,39 +264,38 @@ Mgxs::metadata_from_hdf5(hid_t xs_id, int in_num_groups,
 
   // Finally use this data to initialize the MGXS Object
   init(in_name, in_awr, in_kTs, in_fissionable, in_scatter_format,
-       in_num_groups, in_num_delayed_groups, in_is_isotropic, in_polar,
+       in_is_isotropic, in_polar,
        in_azimuthal);
 }
 
 //==============================================================================
 
-Mgxs::Mgxs(hid_t xs_id, int energy_groups, int delayed_groups,
-     const std::vector<double>& temperature, double tolerance, int max_order,
-     bool legendre_to_tabular, int legendre_to_tabular_points, int& method)
+Mgxs::Mgxs(hid_t xs_id, const std::vector<double>& temperature,
+    int num_group, int num_delay) :
+  num_groups(num_group),
+  num_delayed_groups(num_delay)
 {
   // Call generic data gathering routine (will populate the metadata)
   int order_data;
   std::vector<int> temps_to_read;
-  metadata_from_hdf5(xs_id, energy_groups, delayed_groups, temperature,
-       tolerance, temps_to_read, order_data, method);
+  metadata_from_hdf5(xs_id, temperature, temps_to_read, order_data);
 
   // Set number of energy and delayed groups
   int final_scatter_format = scatter_format;
-  if (legendre_to_tabular) {
+  if (settings::legendre_to_tabular) {
     if (scatter_format == ANGLE_LEGENDRE) final_scatter_format = ANGLE_TABULAR;
   }
 
   // Load the more specific XsData information
   for (int t = 0; t < temps_to_read.size(); t++) {
-    xs[t] = XsData(energy_groups, delayed_groups, fissionable,
-                   final_scatter_format, n_pol, n_azi);
+    xs[t] = XsData(fissionable, final_scatter_format, n_pol, n_azi,
+                   num_groups, num_delayed_groups);
     // Get the temperature as a string and then open the HDF5 group
     std::string temp_str = std::to_string(temps_to_read[t]) + "K";
     hid_t xsdata_grp = open_group(xs_id, temp_str.c_str());
 
     xs[t].from_hdf5(xsdata_grp, fissionable, scatter_format,
-                    final_scatter_format, order_data, max_order,
-                    legendre_to_tabular_points, is_isotropic, n_pol, n_azi);
+                    final_scatter_format, order_data, is_isotropic, n_pol, n_azi);
     close_group(xsdata_grp);
 
   } // end temperature loop
@@ -314,7 +308,9 @@ Mgxs::Mgxs(hid_t xs_id, int energy_groups, int delayed_groups,
 
 Mgxs::Mgxs(const std::string& in_name, const std::vector<double>& mat_kTs,
      const std::vector<Mgxs*>& micros, const std::vector<double>& atom_densities,
-     double tolerance, int& method)
+     int num_group, int num_delay) :
+  num_groups(num_group),
+  num_delayed_groups(num_delay)
 {
   // Get the minimum data needed to initialize:
   // Dont need awr, but lets just initialize it anyways
@@ -327,20 +323,17 @@ Mgxs::Mgxs(const std::string& in_name, const std::vector<double>& mat_kTs,
   // Force all of the following data to be the same; these will be verified
   // to be true later
   int in_scatter_format = micros[0]->scatter_format;
-  int in_num_groups = micros[0]->num_groups;
-  int in_num_delayed_groups = micros[0]->num_delayed_groups;
   bool in_is_isotropic = micros[0]->is_isotropic;
   std::vector<double> in_polar = micros[0]->polar;
   std::vector<double> in_azimuthal = micros[0]->azimuthal;
 
   init(in_name, in_awr, mat_kTs, in_fissionable, in_scatter_format,
-       in_num_groups, in_num_delayed_groups, in_is_isotropic, in_polar,
-       in_azimuthal);
+       in_is_isotropic, in_polar, in_azimuthal);
 
   // Create the xs data for each temperature
   for (int t = 0; t < mat_kTs.size(); t++) {
-    xs[t] = XsData(in_num_groups, in_num_delayed_groups, in_fissionable,
-       in_scatter_format, in_polar.size(), in_azimuthal.size());
+    xs[t] = XsData(in_fissionable, in_scatter_format, in_polar.size(),
+      in_azimuthal.size(), num_groups, num_delayed_groups);
 
     // Find the right temperature index to use
     double temp_desired = mat_kTs[t];
@@ -350,13 +343,13 @@ Mgxs::Mgxs(const std::string& in_name, const std::vector<double>& mat_kTs,
     std::vector<int> micro_t(micros.size(), 0);
     std::vector<double> micro_t_interp(micros.size(), 0.);
     for (int m = 0; m < micros.size(); m++) {
-      switch(method) {
+      switch(settings::temperature_method) {
       case TEMPERATURE_NEAREST:
         {
           micro_t[m] = xt::argmin(xt::abs(micros[m]->kTs - temp_desired))[0];
           auto temp_actual = micros[m]->kTs[micro_t[m]];
 
-          if (std::abs(temp_actual - temp_desired) >= K_BOLTZMANN * tolerance) {
+          if (std::abs(temp_actual - temp_desired) >= K_BOLTZMANN * settings::temperature_tolerance) {
             std::stringstream msg;
             msg << "MGXS Library does not contain cross section for " << name
               << " at or near " << std::round(temp_desired / K_BOLTZMANN) << "K.";
@@ -388,7 +381,7 @@ Mgxs::Mgxs(const std::string& in_name, const std::vector<double>& mat_kTs,
     // If we are doing nearest temperature interpolation, then we don't need
     // to do the 2nd temperature
     int num_interp_points = 2;
-    if (method == TEMPERATURE_NEAREST) num_interp_points = 1;
+    if (settings::temperature_method == TEMPERATURE_NEAREST) num_interp_points = 1;
     for (int interp_point = 0; interp_point < num_interp_points; interp_point++) {
       std::vector<double> interp(micros.size());
       std::vector<double> temp_indices(micros.size());
@@ -423,7 +416,8 @@ Mgxs::combine(const std::vector<Mgxs*>& micros, const std::vector<double>& scala
 //==============================================================================
 
 double
-Mgxs::get_xs(int xstype, int gin, int* gout, double* mu, int* dg)
+Mgxs::get_xs(int xstype, int gin, const int* gout, const double* mu,
+  const int* dg)
 {
   // This method assumes that the temperature and angle indices are set
 #ifdef _OPENMP
@@ -466,7 +460,7 @@ Mgxs::get_xs(int xstype, int gin, int* gout, double* mu, int* dg)
         val = xs_t->delayed_nu_fission(a, *dg, gin);
       } else {
         val = 0.;
-        for (int d = 0; d < xs_t->delayed_nu_fission.shape()[2]; d++) {
+        for (int d = 0; d < xs_t->delayed_nu_fission.shape()[1]; d++) {
           val += xs_t->delayed_nu_fission(a, d, gin);
         }
       }
@@ -521,7 +515,7 @@ Mgxs::get_xs(int xstype, int gin, int* gout, double* mu, int* dg)
     break;
   case MG_GET_XS_DECAY_RATE:
     if (dg != nullptr) {
-      val = xs_t->decay_rate(a, *dg + 1);
+      val = xs_t->decay_rate(a, *dg);
     } else {
       val = xs_t->decay_rate(a, 0);
     }
@@ -547,8 +541,7 @@ Mgxs::sample_fission_energy(int gin, int& dg, int& gout)
   double nu_fission = xs_t->nu_fission(cache[tid].a, gin);
 
   // Find the probability of having a prompt neutron
-  double prob_prompt =
-       xs_t->prompt_nu_fission(cache[tid].a, gin);
+  double prob_prompt = xs_t->prompt_nu_fission(cache[tid].a, gin);
 
   // sample random numbers
   double xi_pd = prn() * nu_fission;
@@ -562,36 +555,29 @@ Mgxs::sample_fission_energy(int gin, int& dg, int& gout)
     dg = -1;
 
     // sample the outgoing energy group
-    gout = 0;
-    double prob_gout =
-         xs_t->chi_prompt(cache[tid].a, gin, gout);
-    while (prob_gout < xi_gout) {
-      gout++;
+    double prob_gout = 0.;
+    for (gout = 0; gout < num_groups; ++gout) {
       prob_gout += xs_t->chi_prompt(cache[tid].a, gin, gout);
+      if (xi_gout < prob_gout) break;
     }
 
   } else {
     // the neutron is delayed
 
     // get the delayed group
-    dg = 0;
-    while (xi_pd >= prob_prompt) {
-      dg++;
-      prob_prompt +=
-           xs_t->delayed_nu_fission(cache[tid].a, dg, gin);
+    for (dg = 0; dg < num_delayed_groups; ++dg) {
+      prob_prompt += xs_t->delayed_nu_fission(cache[tid].a, dg, gin);
+      if (xi_pd < prob_prompt) break;
     }
 
     // adjust dg in case of round-off error
     dg = std::min(dg, num_delayed_groups - 1);
 
     // sample the outgoing energy group
-    gout = 0;
-    double prob_gout =
-         xs_t->chi_delayed(cache[tid].a, dg, gin, gout);
-    while (prob_gout < xi_gout) {
-      gout++;
-      prob_gout +=
-           xs_t->chi_delayed(cache[tid].a, dg, gin, gout);
+    double prob_gout = 0.;
+    for (gout = 0; gout < num_groups; ++gout) {
+      prob_gout += xs_t->chi_delayed(cache[tid].a, dg, gin, gout);
+      if (xi_gout < prob_gout) break;
     }
   }
 }
@@ -614,8 +600,7 @@ Mgxs::sample_scatter(int gin, int& gout, double& mu, double& wgt)
 //==============================================================================
 
 void
-Mgxs::calculate_xs(int gin, double sqrtkT, const double uvw[3],
-     double& total_xs, double& abs_xs, double& nu_fiss_xs)
+Mgxs::calculate_xs(Particle& p)
 {
   // Set our indices
 #ifdef _OPENMP
@@ -623,13 +608,13 @@ Mgxs::calculate_xs(int gin, double sqrtkT, const double uvw[3],
 #else
   int tid = 0;
 #endif
-  set_temperature_index(sqrtkT);
-  set_angle_index(uvw);
+  set_temperature_index(p.sqrtkT_);
+  set_angle_index(p.u_local());
   XsData* xs_t = &xs[cache[tid].t];
-  total_xs = xs_t->total(cache[tid].a, gin);
-  abs_xs = xs_t->absorption(cache[tid].a, gin);
-
-  nu_fiss_xs = fissionable ? xs_t->nu_fission(cache[tid].a, gin) : 0.;
+  p.macro_xs_.total = xs_t->total(cache[tid].a, p.g_);
+  p.macro_xs_.absorption = xs_t->absorption(cache[tid].a, p.g_);
+  p.macro_xs_.nu_fission =
+    fissionable ? xs_t->nu_fission(cache[tid].a, p.g_) : 0.;
 }
 
 //==============================================================================
@@ -666,7 +651,7 @@ Mgxs::set_temperature_index(double sqrtkT)
 //==============================================================================
 
 void
-Mgxs::set_angle_index(const double uvw[3])
+Mgxs::set_angle_index(Direction u)
 {
   // See if we need to find the new index
 #ifdef _OPENMP
@@ -675,11 +660,11 @@ Mgxs::set_angle_index(const double uvw[3])
   int tid = 0;
 #endif
   if (!is_isotropic &&
-      ((uvw[0] != cache[tid].u) || (uvw[1] != cache[tid].v) ||
-       (uvw[2] != cache[tid].w))) {
-    // convert uvw to polar and azimuthal angles
-    double my_pol = std::acos(uvw[2]);
-    double my_azi = std::atan2(uvw[1], uvw[0]);
+      ((u.x != cache[tid].u) || (u.y != cache[tid].v) ||
+       (u.z != cache[tid].w))) {
+    // convert direction to polar and azimuthal angles
+    double my_pol = std::acos(u.z);
+    double my_azi = std::atan2(u.y, u.x);
 
     // Find the location, assuming equal-bin angles
     double delta_angle = PI / n_pol;
@@ -690,9 +675,9 @@ Mgxs::set_angle_index(const double uvw[3])
     cache[tid].a = n_azi * p + a;
 
     // store this direction as the last one used
-    cache[tid].u = uvw[0];
-    cache[tid].v = uvw[1];
-    cache[tid].w = uvw[2];
+    cache[tid].u = u.x;
+    cache[tid].v = u.y;
+    cache[tid].w = u.z;
   }
 }
 

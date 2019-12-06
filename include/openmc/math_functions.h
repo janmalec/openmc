@@ -5,6 +5,7 @@
 #define OPENMC_MATH_FUNCTIONS_H
 
 #include <cmath>
+#include <complex>
 #include <cstdlib>
 
 #include "openmc/constants.h"
@@ -18,29 +19,29 @@ namespace openmc {
 //! Calculate the percentile of the standard normal distribution with a
 //! specified probability level.
 //!
-//! @param p The probability level
-//! @return The requested percentile
+//! \param p The probability level
+//! \return The requested percentile
 //==============================================================================
 
-extern "C" double normal_percentile_c(double p);
+extern "C" double normal_percentile(double p);
 
 //==============================================================================
 //! Calculate the percentile of the Student's t distribution with a specified
 //! probability level and number of degrees of freedom.
 //!
-//! @param p  The probability level
-//! @param df The degrees of freedom
-//! @return The requested percentile
+//! \param p  The probability level
+//! \param df The degrees of freedom
+//! \return The requested percentile
 //==============================================================================
 
-extern "C" double t_percentile_c(double p, int df);
+extern "C" double t_percentile(double p, int df);
 
 //==============================================================================
 //! Calculate the n-th order Legendre polynomials at the value of x.
 //!
-//! @param n   The maximum order requested
-//! @param x   The value to evaluate at; x is expected to be within [-1,1]
-//! @param pnx The requested Legendre polynomials of order 0 to n (inclusive)
+//! \param n   The maximum order requested
+//! \param x   The value to evaluate at; x is expected to be within [-1,1]
+//! \param pnx The requested Legendre polynomials of order 0 to n (inclusive)
 //!   evaluated at x.
 //==============================================================================
 
@@ -50,27 +51,29 @@ extern "C" void calc_pn_c(int n, double x, double pnx[]);
 //! Find the value of f(x) given a set of Legendre coefficients and the value
 //! of x.
 //!
-//! @param n    The maximum order of the expansion
-//! @param data The polynomial expansion coefficient data; without the (2l+1)/2
+//! \param n    The maximum order of the expansion
+//! \param data The polynomial expansion coefficient data; without the (2l+1)/2
 //!   factor.
-//! @param x    The value to evaluate at; x is expected to be within [-1,1]
-//! @return The requested Legendre polynomials of order 0 to n (inclusive)
+//! \param x    The value to evaluate at; x is expected to be within [-1,1]
+//! \return The requested Legendre polynomials of order 0 to n (inclusive)
 //!   evaluated at x
 //==============================================================================
 
-extern "C" double evaluate_legendre_c(int n, const double data[], double x);
+extern "C" double evaluate_legendre(int n, const double data[], double x);
 
 //==============================================================================
 //! Calculate the n-th order real spherical harmonics for a given angle (in
 //! terms of (u,v,w)) for all 0<=n and -m<=n<=n.
 //!
-//! @param n      The maximum order requested
-//! @param uvw[3] The direction the harmonics are requested at
-//! @param rn     The requested harmonics of order 0 to n (inclusive)
+//! \param n      The maximum order requested
+//! \param uvw[3] The direction the harmonics are requested at
+//! \param rn     The requested harmonics of order 0 to n (inclusive)
 //!   evaluated at uvw.
 //==============================================================================
 
 extern "C" void calc_rn_c(int n, const double uvw[3], double rn[]);
+
+void calc_rn(int n, Direction u, double rn[]);
 
 //==============================================================================
 //! Calculate the n-th order modified Zernike polynomial moment for a given
@@ -83,14 +86,14 @@ extern "C" void calc_rn_c(int n, const double uvw[3], double rn[]);
 //! The normalization of the polynomials is such that the integral of Z_pq^2
 //! over the unit disk is exactly pi.
 //!
-//! @param n   The maximum order requested
-//! @param rho The radial parameter to specify location on the unit disk
-//! @param phi The angle parameter to specify location on the unit disk
-//! @param zn  The requested moments of order 0 to n (inclusive)
+//! \param n   The maximum order requested
+//! \param rho The radial parameter to specify location on the unit disk
+//! \param phi The angle parameter to specify location on the unit disk
+//! \param zn  The requested moments of order 0 to n (inclusive)
 //!   evaluated at rho and phi.
 //==============================================================================
 
-extern "C" void calc_zn_c(int n, double rho, double phi, double zn[]);
+extern "C" void calc_zn(int n, double rho, double phi, double zn[]);
 
 //==============================================================================
 //! Calculate only the even radial components of n-th order modified Zernike
@@ -106,14 +109,14 @@ extern "C" void calc_zn_c(int n, double rho, double phi, double zn[]);
 //! The normalization of the polynomials is such that the integral of Z_pq^2
 //! over the unit disk is exactly pi.
 //!
-//! @param n       The maximum order requested
-//! @param rho     The radial parameter to specify location on the unit disk
-//! @param phi     The angle parameter to specify location on the unit disk
-//! @param zn_rad  The requested moments of order 0 to n (inclusive)
+//! \param n       The maximum order requested
+//! \param rho     The radial parameter to specify location on the unit disk
+//! \param phi     The angle parameter to specify location on the unit disk
+//! \param zn_rad  The requested moments of order 0 to n (inclusive)
 //!   evaluated at rho and phi when m = 0.
 //==============================================================================
 
-extern "C" void calc_zn_rad_c(int n, double rho, double zn_rad[]);
+extern "C" void calc_zn_rad(int n, double rho, double zn_rad[]);
 
 //==============================================================================
 //! Rotate the direction cosines through a polar angle whose cosine is mu and
@@ -122,15 +125,15 @@ extern "C" void calc_zn_rad_c(int n, double rho, double zn_rad[]);
 //! This is done with direct sampling rather than rejection sampling as is done
 //! in MCNP and Serpent.
 //!
-//! @param uvw[3] The initial, and final, direction vector
-//! @param mu     The cosine of angle in lab or CM
-//! @param phi    The azimuthal angle; will randomly chosen angle if a nullptr
+//! \param uvw[3] The initial, and final, direction vector
+//! \param mu     The cosine of angle in lab or CM
+//! \param phi    The azimuthal angle; will randomly chosen angle if a nullptr
 //!   is passed
 //==============================================================================
 
-extern "C" void rotate_angle_c(double uvw[3], double mu, double* phi);
+extern "C" void rotate_angle_c(double uvw[3], double mu, const double* phi);
 
-Direction rotate_angle(Direction u, double mu, double* phi);
+Direction rotate_angle(Direction u, double mu, const double* phi);
 
 //==============================================================================
 //! Samples an energy from the Maxwell fission distribution based on a direct
@@ -140,11 +143,11 @@ Direction rotate_angle(Direction u, double mu, double* phi);
 //! p(x) = 2/(T*sqrt(pi))*sqrt(x/T)*exp(-x/T). This PDF can be sampled using
 //! rule C64 in the Monte Carlo Sampler LA-9721-MS.
 //!
-//! @param T The tabulated function of the incoming energy
-//! @result The sampled outgoing energy
+//! \param T The tabulated function of the incoming energy
+//! \return The sampled outgoing energy
 //==============================================================================
 
-extern "C" double maxwell_spectrum_c(double T);
+extern "C" double maxwell_spectrum(double T);
 
 //==============================================================================
 //! Samples an energy from a Watt energy-dependent fission distribution.
@@ -154,26 +157,56 @@ extern "C" double maxwell_spectrum_c(double T);
 //! spectrum. This direct sampling scheme is an unpublished scheme based on the
 //! original Watt spectrum derivation (See F. Brown's MC lectures).
 //!
-//! @param a Watt parameter a
-//! @param b Watt parameter b
+//! \param a Watt parameter a
+//! \param b Watt parameter b
+//! \return The sampled outgoing energy
+//==============================================================================
+
+extern "C" double watt_spectrum(double a, double b);
+
+//==============================================================================
+//! Samples an energy from the Gaussian energy-dependent fission distribution.
+//!
+//! Samples from a Normal distribution with a given mean and standard deviation
+//! The PDF is defined as s(x) = (1/2*sigma*sqrt(2) * e-((mu-x)/2*sigma)^2
+//! Its sampled according to
+//! http://www-pdg.lbl.gov/2009/reviews/rpp2009-rev-monte-carlo-techniques.pdf
+//! section 33.4.4
+//!
+//! @param mean mean of the Gaussian distribution
+//! @param std_dev standard deviation of the Gaussian distribution
 //! @result The sampled outgoing energy
 //==============================================================================
 
-extern "C" double watt_spectrum_c(double a, double b);
+extern "C" double normal_variate(double mean, double std_dev);
+
+//==============================================================================
+//! Samples an energy from the Muir (Gaussian) energy-dependent distribution.
+//!
+//! This is another form of the Gaussian distribution but with more easily
+//! modifiable parameters
+//! https://permalink.lanl.gov/object/tr?what=info:lanl-repo/lareport/LA-05411-MS
+//!
+//! @param e0 peak neutron energy [eV]
+//! @param m_rat ratio of the fusion reactants to AMU
+//! @param kt the ion temperature of the reactants [eV]
+//! @result The sampled outgoing energy
+//==============================================================================
+
+extern "C" double muir_spectrum(double e0, double m_rat, double kt);
 
 //==============================================================================
 //! Doppler broadens the windowed multipole curvefit.
 //!
 //! The curvefit is a polynomial of the form a/E + b/sqrt(E) + c + d sqrt(E)...
 //!
-//! @param E       The energy to evaluate the broadening at
-//! @param dopp    sqrt(atomic weight ratio / kT) with kT given in eV
-//! @param n       The number of components to the polynomial
-//! @param factors The output leading coefficient
+//! \param E       The energy to evaluate the broadening at
+//! \param dopp    sqrt(atomic weight ratio / kT) with kT given in eV
+//! \param n       The number of components to the polynomial
+//! \param factors The output leading coefficient
 //==============================================================================
 
-extern "C" void broaden_wmp_polynomials_c(double E, double dopp, int n,
-                                          double factors[]);
+extern "C" void broaden_wmp_polynomials(double E, double dopp, int n, double factors[]);
 
 //==============================================================================
 //! Constructs a natural cubic spline.
@@ -183,49 +216,62 @@ extern "C" void broaden_wmp_polynomials_c(double E, double dopp, int n,
 //! used in any subsequent calls to spline_interpolate or spline_integrate for
 //! the same set of x and y values.
 //!
-//! @param n       Number of points
-//! @param x       Values of the independent variable, which must be strictly
+//! \param n       Number of points
+//! \param x       Values of the independent variable, which must be strictly
 //!   increasing.
-//! @param y       Values of the dependent variable.
-//! @param[out] z  The second derivative of the interpolating function at each
+//! \param y       Values of the dependent variable.
+//! \param[out] z  The second derivative of the interpolating function at each
 //!   value of x.
 //==============================================================================
 
-extern "C" void spline_c(int n, const double x[], const double y[], double z[]);
+void spline(int n, const double x[], const double y[], double z[]);
 
 //==============================================================================
 //! Determine the cubic spline interpolated y-value for a given x-value.
 //!
-//! @param n     Number of points
-//! @param x     Values of the independent variable, which must be strictly
+//! \param n     Number of points
+//! \param x     Values of the independent variable, which must be strictly
 //!   increasing.
-//! @param y     Values of the dependent variable.
-//! @param z     The second derivative of the interpolating function at each
+//! \param y     Values of the dependent variable.
+//! \param z     The second derivative of the interpolating function at each
 //!   value of x.
-//! @param xint  Point at which to evaluate the cubic spline polynomial
-//! @result      Interpolated value
+//! \param xint  Point at which to evaluate the cubic spline polynomial
+//! \return      Interpolated value
 //==============================================================================
 
-extern "C" double spline_interpolate_c(int n, const double x[], const double y[],
-                                       const double z[], double xint);
+double spline_interpolate(int n, const double x[], const double y[],
+  const double z[], double xint);
 
 //==============================================================================
 //! Evaluate the definite integral of the interpolating cubic spline between
 //! the given endpoints.
 //!
-//! @param n   Number of points
-//! @param x   Values of the independent variable, which must be strictly
+//! \param n   Number of points
+//! \param x   Values of the independent variable, which must be strictly
 //!   increasing.
-//! @param y   Values of the dependent variable.
-//! @param z   The second derivative of the interpolating function at each
+//! \param y   Values of the dependent variable.
+//! \param z   The second derivative of the interpolating function at each
 //!   value of x.
-//! @param xa  Lower limit of integration
-//! @param xb  Upper limit of integration
-//! @result    Integral
+//! \param xa  Lower limit of integration
+//! \param xb  Upper limit of integration
+//! \return    Integral
 //==============================================================================
 
-extern "C" double spline_integrate_c(int n, const double x[], const double y[],
-                                     const double z[], double xa, double xb);
+double spline_integrate(int n, const double x[], const double y[],
+  const double z[], double xa, double xb);
+
+//! Evaluate the Faddeeva function
+//!
+//! \param z Complex argument
+//! \return Faddeeva function evaluated at z
+std::complex<double> faddeeva(std::complex<double> z);
+
+//! Evaluate derivative of the Faddeeva function
+//!
+//! \param z Complex argument
+//! \param order Order of the derivative
+//! \return Derivative of Faddeeva function evaluated at z
+std::complex<double> w_derivative(std::complex<double> z, int order);
 
 } // namespace openmc
 #endif // OPENMC_MATH_FUNCTIONS_H

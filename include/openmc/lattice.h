@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory> // for unique_ptr
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -26,14 +27,17 @@ enum class LatticeType {
   rect, hex
 };
 
+
 //==============================================================================
 // Global variables
 //==============================================================================
 
 class Lattice;
-extern std::vector<Lattice*> lattices;
 
-extern std::unordered_map<int32_t, int32_t> lattice_map;
+namespace model {
+  extern std::vector<std::unique_ptr<Lattice>> lattices;
+  extern std::unordered_map<int32_t, int32_t> lattice_map;
+} // namespace model
 
 //==============================================================================
 //! \class Lattice
@@ -101,7 +105,7 @@ public:
   //! \brief Find the lattice tile indices for a given point.
   //! \param r A 3D Cartesian coordinate.
   //! \return An array containing the indices of a lattice tile.
-  virtual std::array<int, 3> get_indices(Position r) const = 0;
+  virtual std::array<int, 3> get_indices(Position r, Direction u) const = 0;
 
   //! \brief Get coordinates local to a lattice tile.
   //! \param r A 3D Cartesian coordinate.
@@ -149,8 +153,7 @@ public:
   int indx_;  //!< An index to a Lattice universes or offsets array.
 
   LatticeIter(Lattice &lat, int indx)
-    : lat_(lat),
-      indx_(indx)
+    : indx_(indx), lat_(lat)
   {}
 
   bool operator==(const LatticeIter &rhs) {return (indx_ == rhs.indx_);}
@@ -209,7 +212,7 @@ public:
   std::pair<double, std::array<int, 3>>
   distance(Position r, Direction u, const std::array<int, 3>& i_xyz) const;
 
-  std::array<int, 3> get_indices(Position r) const;
+  std::array<int, 3> get_indices(Position r, Direction u) const;
 
   Position
   get_local_position(Position r, const std::array<int, 3> i_xyz) const;
@@ -249,7 +252,7 @@ public:
   std::pair<double, std::array<int, 3>>
   distance(Position r, Direction u, const std::array<int, 3>& i_xyz) const;
 
-  std::array<int, 3> get_indices(Position r) const;
+  std::array<int, 3> get_indices(Position r, Direction u) const;
 
   Position
   get_local_position(Position r, const std::array<int, 3> i_xyz) const;
@@ -263,11 +266,29 @@ public:
   void to_hdf5_inner(hid_t group_id) const;
 
 private:
+  enum class Orientation {
+      y, //!< Flat side of lattice parallel to y-axis
+      x  //!< Flat side of lattice parallel to x-axis
+  };
+
+  //! Fill universes_ vector for 'y' orientation
+  void fill_lattice_y(const std::vector<std::string>& univ_words);
+
+  //! Fill universes_ vector for 'x' orientation
+  void fill_lattice_x(const std::vector<std::string>& univ_words);
+
   int n_rings_;                   //!< Number of radial tile positions
   int n_axial_;                   //!< Number of axial tile positions
+  Orientation orientation_;       //!< Orientation of lattice
   Position center_;               //!< Global center of lattice
   std::array<double, 2> pitch_;   //!< Lattice tile width and height
 };
+
+//==============================================================================
+// Non-member functions
+//==============================================================================
+
+void read_lattices(pugi::xml_node node);
 
 } //  namespace openmc
 #endif // OPENMC_LATTICE_H

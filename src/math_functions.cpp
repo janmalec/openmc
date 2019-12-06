@@ -1,12 +1,15 @@
 #include "openmc/math_functions.h"
 
+#include "Faddeeva.hh"
+
 namespace openmc {
 
 //==============================================================================
 // Mathematical methods
 //==============================================================================
 
-double normal_percentile_c(double p) {
+double normal_percentile(double p)
+{
   constexpr double p_low = 0.02425;
   constexpr double a[6] = {-3.969683028665376e1, 2.209460984245205e2,
                            -2.759285104469687e2, 1.383577518672690e2,
@@ -58,7 +61,8 @@ double normal_percentile_c(double p) {
 }
 
 
-double t_percentile_c(double p, int df){
+double t_percentile(double p, int df)
+{
   double t;
 
   if (df == 1) {
@@ -79,7 +83,7 @@ double t_percentile_c(double p, int df){
     // 16 (4), pp. 1123-1132 (1987).
     double n = df;
     double k = 1. / (n - 2.);
-    double z = normal_percentile_c(p);
+    double z = normal_percentile(p);
     double z2 = z * z;
     t = std::sqrt(n * k) * (z + (z2 - 3.) * z * k / 4. + ((5. * z2 - 56.) * z2 +
          75.) * z * k * k / 96. + (((z2 - 27.) * 3. * z2 + 417.) * z2 - 315.) *
@@ -90,7 +94,8 @@ double t_percentile_c(double p, int df){
 }
 
 
-void calc_pn_c(int n, double x, double pnx[]) {
+void calc_pn_c(int n, double x, double pnx[])
+{
   pnx[0] = 1.;
   if (n >= 1) {
     pnx[1] = x;
@@ -103,27 +108,37 @@ void calc_pn_c(int n, double x, double pnx[]) {
 }
 
 
-double evaluate_legendre_c(int n, const double data[], double x) {
-  double pnx[n + 1];
+double evaluate_legendre(int n, const double data[], double x)
+{
+  double* pnx = new double[n + 1];
   double val = 0.0;
   calc_pn_c(n, x, pnx);
   for (int l = 0; l <= n; l++) {
     val += (l + 0.5) * data[l] * pnx[l];
   }
+  delete[] pnx;
   return val;
 }
 
 
-void calc_rn_c(int n, const double uvw[3], double rn[]){
+void calc_rn_c(int n, const double uvw[3], double rn[])
+{
+  Direction u {uvw};
+  calc_rn(n, u, rn);
+}
+
+
+void calc_rn(int n, Direction u, double rn[])
+{
   // rn[] is assumed to have already been allocated to the correct size
 
   // Store the cosine of the polar angle and the azimuthal angle
-  double w = uvw[2];
+  double w = u.z;
   double phi;
-  if (uvw[0] == 0.) {
+  if (u.x == 0.) {
     phi = 0.;
   } else {
-    phi = std::atan2(uvw[1], uvw[0]);
+    phi = std::atan2(u.y, u.x);
   }
 
   // Store the shorthand of 1-w * w
@@ -510,7 +525,7 @@ void calc_rn_c(int n, const double uvw[3], double rn[]){
 }
 
 
-void calc_zn_c(int n, double rho, double phi, double zn[]) {
+void calc_zn(int n, double rho, double phi, double zn[]) {
   // ===========================================================================
   // Determine vector of sin(n*phi) and cos(n*phi). This takes advantage of the
   // following recurrence relations so that only a single sin/cos have to be
@@ -522,8 +537,8 @@ void calc_zn_c(int n, double rho, double phi, double zn[]) {
   double sin_phi = std::sin(phi);
   double cos_phi = std::cos(phi);
 
-  double sin_phi_vec[n + 1]; // Sin[n * phi]
-  double cos_phi_vec[n + 1]; // Cos[n * phi]
+  std::vector<double> sin_phi_vec(n + 1); // Sin[n * phi]
+  std::vector<double> cos_phi_vec(n + 1); // Cos[n * phi]
   sin_phi_vec[0] = 1.0;
   cos_phi_vec[0] = 1.0;
   sin_phi_vec[1] = 2.0 * cos_phi;
@@ -540,8 +555,8 @@ void calc_zn_c(int n, double rho, double phi, double zn[]) {
 
   // ===========================================================================
   // Calculate R_pq(rho)
-  double zn_mat[n + 1][n + 1]; // Matrix forms of the coefficients which are
-                               // easier to work with
+  // Matrix forms of the coefficients which are easier to work with
+  std::vector<std::vector<double>> zn_mat(n + 1, std::vector<double>(n + 1));
 
   // Fill the main diagonal first (Eq 3.9 in Chong)
   for (int p = 0; p <= n; p++) {
@@ -587,7 +602,7 @@ void calc_zn_c(int n, double rho, double phi, double zn[]) {
 
 }
 
-void calc_zn_rad_c(int n, double rho, double zn_rad[]) {
+void calc_zn_rad(int n, double rho, double zn_rad[]) {
   // Calculate R_p0(rho) as Zn_p0(rho)
   // Set up the array of the coefficients
 
@@ -615,50 +630,52 @@ void calc_zn_rad_c(int n, double rho, double zn_rad[]) {
 }
 
 
-void rotate_angle_c(double uvw[3], double mu, double* phi) {
-  // Copy original directional cosines
-  double u0 = uvw[0]; // original cosine in x direction
-  double v0 = uvw[1]; // original cosine in y direction
-  double w0 = uvw[2]; // original cosine in z direction
+void rotate_angle_c(double uvw[3], double mu, const double* phi) {
+  Direction u = rotate_angle({uvw}, mu, phi);
+  uvw[0] = u.x;
+  uvw[1] = u.y;
+  uvw[2] = u.z;
+}
 
+
+Direction rotate_angle(Direction u, double mu, const double* phi)
+{
   // Sample azimuthal angle in [0,2pi) if none provided
   double phi_;
   if (phi != nullptr) {
     phi_ = (*phi);
   } else {
-    phi_ = 2. * PI * prn();
+    phi_ = 2.0*PI*prn();
   }
 
   // Precompute factors to save flops
   double sinphi = std::sin(phi_);
   double cosphi = std::cos(phi_);
-  double a = std::sqrt(std::fmax(0., 1. - mu * mu));
-  double b = std::sqrt(std::fmax(0., 1. - w0 * w0));
+  double a = std::sqrt(std::fmax(0., 1. - mu*mu));
+  double b = std::sqrt(std::fmax(0., 1. - u.z*u.z));
 
   // Need to treat special case where sqrt(1 - w**2) is close to zero by
   // expanding about the v component rather than the w component
   if (b > 1e-10) {
-    uvw[0] = mu * u0 + a * (u0 * w0 * cosphi - v0 * sinphi) / b;
-    uvw[1] = mu * v0 + a * (v0 * w0 * cosphi + u0 * sinphi) / b;
-    uvw[2] = mu * w0 - a * b * cosphi;
+    return {mu*u.x + a*(u.x*u.z*cosphi - u.y*sinphi) / b,
+            mu*u.y + a*(u.y*u.z*cosphi + u.x*sinphi) / b,
+            mu*u.z - a*b*cosphi};
   } else {
-    b = std::sqrt(1. - v0 * v0);
-    uvw[0] = mu * u0 + a * (u0 * v0 * cosphi + w0 * sinphi) / b;
-    uvw[1] = mu * v0 - a * b * cosphi;
-    uvw[2] = mu * w0 + a * (v0 * w0 * cosphi - u0 * sinphi) / b;
+    b = std::sqrt(1. - u.y*u.y);
+    return {mu*u.x + a*(u.x*u.y*cosphi + u.z*sinphi) / b,
+            mu*u.y - a*b*cosphi,
+            mu*u.z + a*(u.y*u.z*cosphi - u.x*sinphi) / b};
+    // TODO: use the following code to make PolarAzimuthal distributions match
+    // spherical coordinate conventions. Remove the related fixup code in
+    // PolarAzimuthal::sample.
+    //return {mu*u.x + a*(-u.x*u.y*sinphi + u.z*cosphi) / b,
+    //        mu*u.y + a*b*sinphi,
+    //        mu*u.z - a*(u.y*u.z*sinphi + u.x*cosphi) / b};
   }
 }
 
 
-Direction rotate_angle(Direction u, double mu, double* phi)
-{
-  double uvw[] {u.x, u.y, u.z};
-  rotate_angle_c(uvw, mu, phi);
-  return {uvw[0], uvw[1], uvw[2]};
-}
-
-
-double maxwell_spectrum_c(double T) {
+double maxwell_spectrum(double T) {
   // Set the random numbers
   double r1 = prn();
   double r2 = prn();
@@ -674,15 +691,40 @@ double maxwell_spectrum_c(double T) {
 }
 
 
-double watt_spectrum_c(double a, double b) {
-  double w = maxwell_spectrum_c(a);
+double normal_variate(double mean, double standard_deviation) {
+  // perhaps there should be a limit to the number of resamples
+  while ( true ) {
+    double v1 = 2 * prn() - 1.;
+    double v2 = 2 * prn() - 1.;
+
+    double r = std::pow(v1, 2) + std::pow(v2, 2);
+    double r2 = std::pow(r, 2);
+    if (r2 < 1) {
+      double z = std::sqrt(-2.0 * std::log(r2)/r2);
+      z *= (prn() <= 0.5) ? v1 : v2;
+      return mean + standard_deviation*z;
+    }
+  }
+}
+
+double muir_spectrum(double e0, double m_rat, double kt) {
+  // note sigma here is a factor of 2 shy of equation
+  // 8 in https://permalink.lanl.gov/object/tr?what=info:lanl-repo/lareport/LA-05411-MS
+  double sigma = std::sqrt(2.*e0*kt/m_rat);
+  return normal_variate(e0, sigma);
+}
+
+
+double watt_spectrum(double a, double b) {
+  double w = maxwell_spectrum(a);
   double E_out = w + 0.25 * a * a * b + (2. * prn() - 1.) * std::sqrt(a * a * b * w);
 
   return E_out;
 }
 
 
-void broaden_wmp_polynomials_c(double E, double dopp, int n, double factors[]) {
+void broaden_wmp_polynomials(double E, double dopp, int n, double factors[])
+{
   // Factors is already pre-allocated
   double sqrtE = std::sqrt(E);
   double beta = sqrtE * dopp;
@@ -726,9 +768,9 @@ void broaden_wmp_polynomials_c(double E, double dopp, int n, double factors[]) {
 }
 
 
-void spline_c(int n, const double x[], const double y[], double z[])
+void spline(int n, const double x[], const double y[], double z[])
 {
-  double c_new[n-1];
+  std::vector<double> c_new(n-1);
 
   // Set natural boundary conditions
   c_new[0] = 0.0;
@@ -753,8 +795,8 @@ void spline_c(int n, const double x[], const double y[], double z[])
 }
 
 
-double spline_interpolate_c(int n, const double x[], const double y[],
-                            const double z[], double xint)
+double spline_interpolate(int n, const double x[], const double y[],
+  const double z[], double xint)
 {
   // Find the lower bounding index in x of xint
   int i = n - 1;
@@ -774,8 +816,8 @@ double spline_interpolate_c(int n, const double x[], const double y[],
 }
 
 
-double spline_integrate_c(int n, const double x[], const double y[],
-                          const double z[], double xa, double xb)
+double spline_integrate(int n, const double x[], const double y[],
+  const double z[], double xa, double xb)
 {
   // Find the lower bounding index in x of the lower limit of integration.
   int ia = n - 1;
@@ -815,6 +857,40 @@ double spline_integrate_c(int n, const double x[], const double y[],
   }
 
   return s;
+}
+
+std::complex<double> faddeeva(std::complex<double> z)
+{
+  // Technically, the value we want is given by the equation:
+  // w(z) = I/pi * Integrate[Exp[-t^2]/(z-t), {t, -Infinity, Infinity}]
+  // as shown in Equation 63 from Hwang, R. N. "A rigorous pole
+  // representation of multilevel cross sections and its practical
+  // applications." Nucl. Sci. Eng. 96.3 (1987): 192-209.
+  //
+  // The MIT Faddeeva function evaluates w(z) = exp(-z^2)erfc(-iz). These
+  // two forms of the Faddeeva function are related by a transformation.
+  //
+  // If we call the integral form w_int, and the function form w_fun:
+  // For imag(z) > 0, w_int(z) = w_fun(z)
+  // For imag(z) < 0, w_int(z) = -conjg(w_fun(conjg(z)))
+
+  // Note that Faddeeva::w will interpret zero as machine epsilon
+  return z.imag() > 0.0 ? Faddeeva::w(z) :
+    -std::conj(Faddeeva::w(std::conj(z)));
+}
+
+std::complex<double> w_derivative(std::complex<double> z, int order)
+{
+  using namespace std::complex_literals;
+  switch (order) {
+  case 0:
+    return faddeeva(z);
+  case 1:
+    return -2.0*z*faddeeva(z) + 2.0i / SQRT_PI;
+  default:
+    return -2.0*z*w_derivative(z, order-1)
+      - 2.0*(order-1)*w_derivative(z, order-2);
+  }
 }
 
 } // namespace openmc

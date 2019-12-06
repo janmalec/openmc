@@ -17,7 +17,7 @@ class ResonanceScatteringTestHarness(PyAPITestHarness):
         mats_file.export_to_xml()
 
         # Geometry
-        dumb_surface = openmc.XPlane(x0=100, boundary_type='reflective')
+        dumb_surface = openmc.XPlane(100, 'reflective')
         c1 = openmc.Cell(cell_id=1, fill=mat, region=-dumb_surface)
         root_univ = openmc.Universe(universe_id=0, cells=[c1])
         geometry = openmc.Geometry(root_univ)
@@ -28,7 +28,7 @@ class ResonanceScatteringTestHarness(PyAPITestHarness):
             'enable': True,
             'energy_min': 1.0,
             'energy_max': 210.0,
-            'method': 'ares',
+            'method': 'rvs',
             'nuclides': ['U238', 'U235', 'Pu239']
         }
 

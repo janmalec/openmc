@@ -24,6 +24,10 @@ def myplot():
     plot.mask_background = (255, 255, 255)
     plot.mask_background = 'white'
 
+    plot.overlap_color = (255, 211, 0)
+    plot.overlap_color = 'yellow'
+    plot.show_overlaps = True
+
     plot.level = 1
     plot.meshlines = {
         'type': 'tally',
@@ -45,7 +49,7 @@ def test_repr(myplot):
 
 def test_from_geometry():
     width = 25.
-    s = openmc.Sphere(R=width/2, boundary_type='vacuum')
+    s = openmc.Sphere(r=width/2, boundary_type='vacuum')
     c = openmc.Cell(region=-s)
     univ = openmc.Universe(cells=[c])
     geom = openmc.Geometry(univ)

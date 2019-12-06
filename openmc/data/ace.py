@@ -15,7 +15,6 @@ generates ACE-format cross sections.
 
 """
 
-from os import SEEK_CUR
 from pathlib import PurePath
 import struct
 import sys
@@ -106,7 +105,7 @@ def ascii_to_binary(ascii_file, binary_file):
     """
 
     # Open ASCII file
-    ascii = open(ascii_file, 'r')
+    ascii = open(str(ascii_file), 'r')
 
     # Set default record length
     record_length = 4096
@@ -116,7 +115,7 @@ def ascii_to_binary(ascii_file, binary_file):
     ascii.close()
 
     # Open binary file
-    binary = open(binary_file, 'wb')
+    binary = open(str(binary_file), 'wb')
 
     idx = 0
 
@@ -185,13 +184,12 @@ def get_table(filename, name=None):
 
     """
 
-    lib = Library(filename)
     if name is None:
-        return lib.tables[0]
+        return Library(filename).tables[0]
     else:
-        for table in lib.tables:
-            if table.name == name:
-                return table
+        lib = Library(filename, name)
+        if lib.tables:
+            return lib.tables[0]
         else:
             raise ValueError('Could not find ACE table with name: {}'
                              .format(name))
@@ -228,8 +226,9 @@ class Library(EqualityMixin):
         self.tables = []
 
         # Determine whether file is ASCII or binary
+        filename = str(filename)
         try:
-            fh = open(str(filename), 'rb')
+            fh = open(filename, 'rb')
             # Grab 10 lines of the library
             sb = b''.join([fh.readline() for i in range(10)])
 
@@ -239,7 +238,6 @@ class Library(EqualityMixin):
             # No exception so proceed with ASCII - reopen in non-binary
             fh.close()
             with open(filename, 'r') as fh:
-                fh.seek(0)
                 self._read_ascii(fh, table_names, verbose)
         except UnicodeDecodeError:
             fh.close()
@@ -377,26 +375,21 @@ class Library(EqualityMixin):
             nxs = np.fromstring(datastr, sep=' ', dtype=int)
 
             n_lines = (nxs[1] + 3)//4
-            n_bytes = len(lines[-1]) * (n_lines - 2) + 1
 
             # Ensure that we have more tables to read in
-            if (table_names is not None) and (table_names < tables_seen):
+            if (table_names is not None) and (table_names <= tables_seen):
                 break
             tables_seen.add(name)
 
-            # verify that we are suppossed to read this table in
+            # verify that we are supposed to read this table in
             if (table_names is not None) and (name not in table_names):
-                ace_file.seek(n_bytes, SEEK_CUR)
-                ace_file.readline()
+                for i in range(n_lines - 1):
+                    ace_file.readline()
                 lines = [ace_file.readline() for i in range(13)]
                 continue
 
-            # read and fix over-shoot
-            lines += ace_file.readlines(n_bytes)
-            if 12 + n_lines < len(lines):
-                goback = sum([len(line) for line in lines[12+n_lines:]])
-                lines = lines[:12+n_lines]
-                ace_file.seek(-goback, SEEK_CUR)
+            # Read lines corresponding to this table
+            lines += [ace_file.readline() for i in range(n_lines - 1)]
 
             if verbose:
                 kelvin = round(temperature * 1e6 / 8.617342e-5)
@@ -418,7 +411,7 @@ class Library(EqualityMixin):
             # after it). If it's too short, then we apply the ENDF float regular
             # expression. We don't do this by default because it's expensive!
             if xss.size != nxs[1] + 1:
-                datastr = ENDF_FLOAT_RE.sub(r'\1e\2', datastr)
+                datastr = ENDF_FLOAT_RE.sub(r'\1e\2\3', datastr)
                 xss = np.fromstring(datastr, sep=' ')
                 assert xss.size == nxs[1] + 1
 

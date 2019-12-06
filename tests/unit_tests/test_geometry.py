@@ -10,8 +10,8 @@ def test_volume(run_in_tmpdir, uo2):
     # Create model with nested spheres
     model = openmc.model.Model()
     model.materials.append(uo2)
-    inner = openmc.Sphere(R=1.)
-    outer = openmc.Sphere(R=2., boundary_type='vacuum')
+    inner = openmc.Sphere(r=1.)
+    outer = openmc.Sphere(r=2., boundary_type='vacuum')
     c1 = openmc.Cell(fill=uo2, region=-inner)
     c2 = openmc.Cell(region=+inner & -outer)
     u = openmc.Universe(cells=[c1, c2])
@@ -44,8 +44,8 @@ def test_volume(run_in_tmpdir, uo2):
 
 
 def test_export_xml(run_in_tmpdir, uo2):
-    s1 = openmc.Sphere(R=1.)
-    s2 = openmc.Sphere(R=2., boundary_type='reflective')
+    s1 = openmc.Sphere(r=1.)
+    s2 = openmc.Sphere(r=2., boundary_type='reflective')
     c1 = openmc.Cell(fill=uo2, region=-s1)
     c2 = openmc.Cell(fill=uo2, region=+s1 & -s2)
     geom = openmc.Geometry([c1, c2])
@@ -203,6 +203,30 @@ def test_get_by_name():
     assert not univs
 
 
+def test_hex_prism():
+    hex_prism = openmc.model.hexagonal_prism(edge_length=5.0,
+                                             origin=(0.0, 0.0),
+                                             orientation='y')
+    # clear checks
+    assert (0.0, 0.0, 0.0) in hex_prism
+    assert (10.0, 10.0, 10.0) not in hex_prism
+    # edge checks
+    assert (0.0, 5.01, 0.0) not in hex_prism
+    assert (0.0, 4.99, 0.0) in hex_prism
+
+    rounded_hex_prism = openmc.model.hexagonal_prism(edge_length=5.0,
+                                                     origin=(0.0, 0.0),
+                                                     orientation='y',
+                                                     corner_radius=1.0)
+
+    # clear checks
+    assert (0.0, 0.0, 0.0) in rounded_hex_prism
+    assert (10.0, 10.0, 10.0) not in rounded_hex_prism
+    # edge checks
+    assert (0.0, 5.01, 0.0) not in rounded_hex_prism
+    assert (0.0, 4.99, 0.0) not in rounded_hex_prism
+
+
 def test_get_lattice_by_name(cell_with_lattice):
     cells, _, _, lattice = cell_with_lattice
     geom = openmc.Geometry([cells[-1]])
@@ -245,6 +269,7 @@ def test_determine_paths(cell_with_lattice):
         assert geom.get_instances(cells[0].paths[i]) == i
         assert geom.get_instances(mats[-1].paths[i]) == i
 
+
 def test_from_xml(run_in_tmpdir, mixed_lattice_model):
     # Export model
     mixed_lattice_model.export_to_xml()
@@ -255,3 +280,24 @@ def test_from_xml(run_in_tmpdir, mixed_lattice_model):
     ll, ur = geom.bounding_box
     assert ll == pytest.approx((-6.0, -6.0, -np.inf))
     assert ur == pytest.approx((6.0, 6.0, np.inf))
+
+
+def test_rotation_matrix():
+    """Test ability to set a rotation matrix directly"""
+    y = openmc.YPlane()
+    cyl1 = openmc.ZCylinder(r=1.0)
+    cyl2 = openmc.ZCylinder(r=2.0, boundary_type='vacuum')
+
+    # Create a universe and then reflect in the y-direction
+    c1 = openmc.Cell(region=-cyl1 & +y)
+    c2 = openmc.Cell(region=+cyl1 & +y)
+    c3 = openmc.Cell(region=-y)
+    univ = openmc.Universe(cells=[c1, c2, c3])
+    c = openmc.Cell(fill=univ, region=-cyl2)
+    c.rotation = [[1, 0, 0], [0, -1, 0], [0, 0, 1]]
+    assert np.all(c.rotation_matrix == c.rotation)
+    geom = openmc.Geometry([c])
+
+    assert geom.find((0.0, 0.5, 0.0))[-1] == c3
+    assert geom.find((0.0, -0.5, 0.0))[-1] == c1
+    assert geom.find((0.0, -1.5, 0.0))[-1] == c2
