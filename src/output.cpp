@@ -72,7 +72,7 @@ void title()
   // Write version information
   std::cout <<
     "                   | The OpenMC Monte Carlo Code\n" <<
-    "         Copyright | 2011-2019 MIT and OpenMC contributors\n" <<
+    "         Copyright | 2011-2020 MIT and OpenMC contributors\n" <<
     "           License | http://openmc.readthedocs.io/en/latest/license.html\n" <<
     "           Version | " << VERSION_MAJOR << '.' << VERSION_MINOR << '.'
     << VERSION_RELEASE << (VERSION_DEV ? "-dev" : "") << '\n';
@@ -660,16 +660,16 @@ write_tallies()
       const auto& deriv {model::tally_derivs[tally.deriv_]};
       switch (deriv.variable) {
       case DIFF_DENSITY:
-        tallies_out << " Density derivative  Material "
+        tallies_out << " Density derivative Material "
           << std::to_string(deriv.diff_material) << "\n";
         break;
       case DIFF_NUCLIDE_DENSITY:
-        tallies_out << " Nuclide density derivative  Material "
+        tallies_out << " Nuclide density derivative Material "
           << std::to_string(deriv.diff_material) << "  Nuclide "
           << data::nuclides[deriv.diff_nuclide]->name_ << "\n";
         break;
       case DIFF_TEMPERATURE:
-        tallies_out << " Temperature derivative  Material "
+        tallies_out << " Temperature derivative Material "
           << std::to_string(deriv.diff_material) << "\n";
         break;
       default:

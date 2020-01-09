@@ -76,7 +76,7 @@ Particle::Particle()
 void
 Particle::clear()
 {
-  // reset any coordinate levels
+  // Reset any coordinate levels
   for (auto& level : coord_) level.reset();
   n_coord_ = 1;
 }
@@ -99,7 +99,7 @@ Particle::create_secondary(Direction u, double E, Type type)
 void
 Particle::from_source(const Bank* src)
 {
-  // reset some attributes
+  // Reset some attributes
   this->clear();
   alive_ = true;
   surface_ = 0;
@@ -108,7 +108,7 @@ Particle::from_source(const Bank* src)
   n_collision_ = 0;
   fission_ = false;
 
-  // copy attributes from source bank site
+  // Copy attributes from source bank site
   type_ = src->particle;
   wgt_ = src->wgt;
   wgt_last_ = src->wgt;
@@ -157,9 +157,9 @@ Particle::transport()
   while (true) {
     // Set the random number stream
     if (type_ == Particle::Type::neutron) {
-      prn_set_stream(STREAM_TRACKING);
+      stream_ = STREAM_TRACKING;
     } else {
-      prn_set_stream(STREAM_PHOTON);
+      stream_ = STREAM_PHOTON;
     }
 
     // Store pre-collision particle properties
@@ -183,7 +183,7 @@ Particle::transport()
         return;
       }
 
-      // set birth cell attribute
+      // Set birth cell attribute
       if (cell_born_ == C_NONE) cell_born_ = coord_[n_coord_ - 1].cell;
     }
 
@@ -228,7 +228,7 @@ Particle::transport()
     } else if (macro_xs_.total == 0.0) {
       d_collision = INFINITY;
     } else {
-      d_collision = -std::log(prn()) / macro_xs_.total;
+      d_collision = -std::log(prn(this->current_seed())) / macro_xs_.total;
     }
 
     // Select smaller of the two distances
@@ -461,7 +461,7 @@ Particle::cross_surface()
 
     Direction u = (surf->bc_ == BC_REFLECT) ?
       surf->reflect(this->r(), this->u()) :
-      surf->diffuse_reflect(this->r(), this->u());
+      surf->diffuse_reflect(this->r(), this->u(), this->current_seed());
 
     // Make sure new particle direction is normalized
     this->u() = u / u.norm();
