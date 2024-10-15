@@ -22,10 +22,12 @@ Composite Surfaces
    :nosignatures:
    :template: myclass.rst
 
+   openmc.model.ConicalFrustum
    openmc.model.CruciformPrism
    openmc.model.CylinderSector
    openmc.model.HexagonalPrism
    openmc.model.IsogonalOctagon
+   openmc.model.OrthogonalBox
    openmc.model.Polygon
    openmc.model.RectangularParallelepiped
    openmc.model.RectangularPrism

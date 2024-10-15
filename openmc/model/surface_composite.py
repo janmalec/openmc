@@ -645,6 +645,86 @@ class RectangularParallelepiped(CompositeSurface):
         return +self.xmax | -self.xmin | +self.ymax | -self.ymin | +self.zmax | -self.zmin
 
 
+class OrthogonalBox(CompositeSurface):
+    """Arbitrarily oriented orthogonal box
+
+    This composite surface is composed of four or six planar surfaces that form
+    an arbitrarily oriented orthogonal box when combined.
+
+    Parameters
+    ----------
+    v : iterable of float
+        (x,y,z) coordinates of a corner of the box
+    a1 : iterable of float
+        Vector of first side starting from ``v``
+    a2 : iterable of float
+        Vector of second side starting from ``v``
+    a3 : iterable of float, optional
+        Vector of third side starting from ``v``. When not specified, it is
+        assumed that the box will be infinite along the vector normal to the
+        plane specified by ``a1`` and ``a2``.
+    **kwargs
+        Keyword arguments passed to underlying plane classes
+
+    Attributes
+    ----------
+    ax1_min, ax1_max : openmc.Plane
+        Planes representing minimum and maximum along first axis
+    ax2_min, ax2_max : openmc.Plane
+        Planes representing minimum and maximum along second axis
+    ax3_min, ax3_max : openmc.Plane
+        Planes representing minimum and maximum along third axis
+
+    """
+    _surface_names = ('ax1_min', 'ax1_max', 'ax2_min', 'ax2_max', 'ax3_min', 'ax3_max')
+
+    def __init__(self, v, a1, a2, a3=None, **kwargs):
+        v = np.array(v)
+        a1 = np.array(a1)
+        a2 = np.array(a2)
+        if has_a3 := a3 is not None:
+            a3 = np.array(a3)
+        else:
+            a3 = np.cross(a1, a2)  # normal to plane specified by a1 and a2
+
+        # Generate corners of box
+        p1 = v
+        p2 = v + a1
+        p3 = v + a2
+        p4 = v + a3
+        p5 = v + a1 + a2
+        p6 = v + a2 + a3
+        p7 = v + a1 + a3
+
+        # Generate 6 planes of box
+        self.ax1_min = openmc.Plane.from_points(p1, p3, p4, **kwargs)
+        self.ax1_max = openmc.Plane.from_points(p2, p5, p7, **kwargs)
+        self.ax2_min = openmc.Plane.from_points(p1, p4, p2, **kwargs)
+        self.ax2_max = openmc.Plane.from_points(p3, p6, p5, **kwargs)
+        if has_a3:
+            self.ax3_min = openmc.Plane.from_points(p1, p2, p3, **kwargs)
+            self.ax3_max = openmc.Plane.from_points(p4, p7, p6, **kwargs)
+
+        # Make sure a point inside the box produces the correct senses. If not,
+        # flip the plane coefficients so it does.
+        mid_point = v + (a1 + a2 + a3)/2
+        nums = (1, 2, 3) if has_a3 else (1, 2)
+        for num in nums:
+            min_surf = getattr(self, f'ax{num}_min')
+            max_surf = getattr(self, f'ax{num}_max')
+            if mid_point in -min_surf:
+                min_surf.flip_normal()
+            if mid_point in +max_surf:
+                max_surf.flip_normal()
+
+    def __neg__(self):
+        region = (+self.ax1_min & -self.ax1_max &
+                  +self.ax2_min & -self.ax2_max)
+        if hasattr(self, 'ax3_min'):
+            region &= (+self.ax3_min & -self.ax3_max)
+        return region
+
+
 class XConeOneSided(CompositeSurface):
     """One-sided cone parallel the x-axis
 
@@ -698,12 +778,6 @@ class XConeOneSided(CompositeSurface):
     def __neg__(self):
         return -self.cone & (+self.plane if self.up else -self.plane)
 
-    def __pos__(self):
-        if self.up:
-            return (+self.cone & +self.plane) | -self.plane
-        else:
-            return (+self.cone & -self.plane) | +self.plane
-
 
 class YConeOneSided(CompositeSurface):
     """One-sided cone parallel the y-axis
@@ -756,7 +830,6 @@ class YConeOneSided(CompositeSurface):
         self.up = up
 
     __neg__ = XConeOneSided.__neg__
-    __pos__ = XConeOneSided.__pos__
 
 
 class ZConeOneSided(CompositeSurface):
@@ -810,7 +883,6 @@ class ZConeOneSided(CompositeSurface):
         self.up = up
 
     __neg__ = XConeOneSided.__neg__
-    __pos__ = XConeOneSided.__pos__
 
 
 class Polygon(CompositeSurface):
@@ -1645,3 +1717,123 @@ class HexagonalPrism(CompositeSurface):
             prism &= ~corners
 
         return prism
+
+
+def _rotation_matrix(v1, v2):
+    """Compute rotation matrix that would rotate v1 into v2.
+
+    Parameters
+    ----------
+    v1 : numpy.ndarray
+        Unrotated vector
+    v2 : numpy.ndarray
+        Rotated vector
+
+    Returns
+    -------
+    3x3 rotation matrix
+
+    """
+    # Normalize vectors and compute cosine
+    u1 = v1 / np.linalg.norm(v1)
+    u2 = v2 / np.linalg.norm(v2)
+    cos_angle = np.dot(u1, u2)
+
+    I = np.identity(3)
+
+    # Handle special case where vectors are parallel or anti-parallel
+    if isclose(abs(cos_angle), 1.0, rel_tol=1e-8):
+        return np.sign(cos_angle)*I
+    else:
+        # Calculate rotation angle
+        sin_angle = np.sqrt(1 - cos_angle*cos_angle)
+
+        # Calculate axis of rotation
+        axis = np.cross(u1, u2)
+        axis /= np.linalg.norm(axis)
+
+        # Create cross-product matrix K
+        kx, ky, kz = axis
+        K = np.array([
+            [0.0, -kz, ky],
+            [kz, 0.0, -kx],
+            [-ky, kx, 0.0]
+        ])
+
+        # Create rotation matrix using Rodrigues' rotation formula
+        return I + K * sin_angle + (K @ K) * (1 - cos_angle)
+
+
+class ConicalFrustum(CompositeSurface):
+    """Conical frustum.
+
+    A conical frustum, also known as a right truncated cone, is a cone that is
+    truncated by two parallel planes that are perpendicular to the axis of the
+    cone. The lower and upper base of the conical frustum are circular faces.
+    This surface is equivalent to the TRC macrobody in MCNP.
+
+    .. versionadded:: 0.15.1
+
+    Parameters
+    ----------
+    center_base : iterable of float
+        Cartesian coordinates of the center of the bottom planar face.
+    axis : iterable of float
+        Vector from the center of the bottom planar face to the center of the
+        top planar face that defines the axis of the cone. The length of this
+        vector is the height of the conical frustum.
+    r1 : float
+        Radius of the lower cone base
+    r2 : float
+        Radius of the upper cone base
+    **kwargs
+        Keyword arguments passed to underlying plane classes
+
+    Attributes
+    ----------
+    cone : openmc.Cone
+        Cone surface
+    plane_bottom : openmc.Plane
+        Plane surface defining the bottom of the frustum
+    plane_top : openmc.Plane
+        Plane surface defining the top of the frustum
+
+    """
+    _surface_names = ('cone', 'plane_bottom', 'plane_top')
+
+    def __init__(self, center_base: Sequence[float], axis: Sequence[float],
+                 r1: float, r2: float, **kwargs):
+        center_base = np.array(center_base)
+        axis = np.array(axis)
+
+        # Determine length of axis height vector
+        h = np.linalg.norm(axis)
+
+        # To create the frustum oriented with the correct axis, first we will
+        # create a cone along the z axis and then rotate it according to the
+        # given axis. Thus, we first need to determine the apex using the z axis
+        # as a reference.
+        x0, y0, z0 = center_base
+        if r1 != r2:
+            apex = z0 + r1*h/(r1 - r2)
+            r_sq = ((r1 - r2)/h)**2
+            cone = openmc.ZCone(x0, y0, apex, r2=r_sq, **kwargs)
+        else:
+            # In the degenerate case r1 == r2, the cone becomes a cylinder
+            cone = openmc.ZCylinder(x0, y0, r1, **kwargs)
+
+        # Create the parallel planes
+        plane_bottom = openmc.ZPlane(z0, **kwargs)
+        plane_top = openmc.ZPlane(z0 + h, **kwargs)
+
+        # Determine rotation matrix corresponding to specified axis
+        u = np.array([0., 0., 1.])
+        rotation = _rotation_matrix(u, axis)
+
+        # Rotate the surfaces
+        self.cone = cone.rotate(rotation, pivot=center_base)
+        self.plane_bottom = plane_bottom.rotate(rotation, pivot=center_base)
+        self.plane_top = plane_top.rotate(rotation, pivot=center_base)
+
+    def __neg__(self) -> openmc.Region:
+        return +self.plane_bottom & -self.plane_top & -self.cone

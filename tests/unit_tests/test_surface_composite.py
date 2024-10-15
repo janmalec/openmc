@@ -498,3 +498,101 @@ def test_cruciform_prism(axis):
         openmc.model.CruciformPrism([1.0, 0.5, 2.0, 3.0])
     with pytest.raises(ValueError):
         openmc.model.CruciformPrism([3.0, 2.0, 0.5, 1.0])
+
+
+def test_box():
+    v = (-1.0, -1.0, -2.5)
+    a1 = (2.0, -1.0, 0.0)
+    a2 = (1.0, 2.0, 0.0)
+    a3 = (0.0, 0.0, 5.0)
+    s = openmc.model.OrthogonalBox(v, a1, a2, a3)
+    for num in (1, 2, 3):
+        assert isinstance(getattr(s, f'ax{num}_min'), openmc.Plane)
+        assert isinstance(getattr(s, f'ax{num}_max'), openmc.Plane)
+
+    # Make sure boundary condition propagates
+    s.boundary_type = 'reflective'
+    assert s.boundary_type == 'reflective'
+    for num in (1, 2, 3):
+        assert getattr(s, f'ax{num}_min').boundary_type == 'reflective'
+        assert getattr(s, f'ax{num}_max').boundary_type == 'reflective'
+
+    # Check bounding box
+    ll, ur = (+s).bounding_box
+    assert np.all(np.isinf(ll))
+    assert np.all(np.isinf(ur))
+    ll, ur = (-s).bounding_box
+    assert ll[2] == pytest.approx(-2.5)
+    assert ur[2] == pytest.approx(2.5)
+
+    # __contains__ on associated half-spaces
+    assert (0., 0., 0.) in -s
+    assert (-2., 0., 0.) not in -s
+    assert (0., 0.9, 0.) in -s
+    assert (0., 0., -3.) in +s
+    assert (0., 0., 3.) in +s
+
+    # translate method
+    s_t = s.translate((1., 1., 0.))
+    assert (-0.01, 0., 0.) in +s_t
+    assert (0.01, 0., 0.) in -s_t
+
+    # Make sure repr works
+    repr(s)
+
+    # Version with infinite 3rd dimension
+    s = openmc.model.OrthogonalBox(v, a1, a2)
+    assert not hasattr(s, 'ax3_min')
+    assert not hasattr(s, 'ax3_max')
+    ll, ur = (-s).bounding_box
+    assert np.all(np.isinf(ll))
+    assert np.all(np.isinf(ur))
+    assert (0., 0., 0.) in -s
+    assert (-2., 0., 0.) not in -s
+    assert (0., 0.9, 0.) in -s
+    assert (0., 0., -3.) not in +s
+    assert (0., 0., 3.) not in +s
+
+
+def test_conical_frustum():
+    center_base = (0.0, 0.0, -3)
+    axis = (0., 0., 3.)
+    r1 = 2.0
+    r2 = 0.5
+    s = openmc.model.ConicalFrustum(center_base, axis, r1, r2)
+    assert isinstance(s.cone, openmc.Cone)
+    assert isinstance(s.plane_bottom, openmc.Plane)
+    assert isinstance(s.plane_top, openmc.Plane)
+
+    # Make sure boundary condition propagates
+    s.boundary_type = 'reflective'
+    assert s.boundary_type == 'reflective'
+    assert s.cone.boundary_type == 'reflective'
+    assert s.plane_bottom.boundary_type == 'reflective'
+    assert s.plane_top.boundary_type == 'reflective'
+
+    # Check bounding box
+    ll, ur = (+s).bounding_box
+    assert np.all(np.isinf(ll))
+    assert np.all(np.isinf(ur))
+    ll, ur = (-s).bounding_box
+    assert ll[2] == pytest.approx(-3.0)
+    assert ur[2] == pytest.approx(0.0)
+
+    # __contains__ on associated half-spaces
+    assert (0., 0., -1.) in -s
+    assert (0., 0., -4.) not in -s
+    assert (0., 0., 1.) not in -s
+    assert (1., 1., -2.99) in -s
+    assert (1., 1., -0.01) in +s
+
+    # translate method
+    s_t = s.translate((1., 1., 0.))
+    assert (1., 1., -0.01) in -s_t
+
+    # Make sure repr works
+    repr(s)
+
+    # Denegenerate case with r1 = r2
+    s = openmc.model.ConicalFrustum(center_base, axis, r1, r1)
+    assert (1., 1., -0.01) in -s
