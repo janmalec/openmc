@@ -78,7 +78,7 @@ reconr / %%%%%%%%%%%%%%%%%%% Reconstruct XS for neutrons %%%%%%%%%%%%%%%%%%%%%%%
 {nendf} {npendf}
 '{library} PENDF for {zsymam}'/
 {mat} 2/
-{error}/ err
+{error} 0. 0.003/ err
 '{library}: {zsymam}'/
 'Processed by NJOY'/
 0/
@@ -88,7 +88,7 @@ _TEMPLATE_BROADR = """
 broadr / %%%%%%%%%%%%%%%%%%%%%%% Doppler broaden XS %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 {nendf} {npendf} {nbroadr}
 {mat} {num_temp} 0 0 0. /
-{error}/ errthn
+{error} 0. 0.003/ errthn
 {temps}
 0/
 """
@@ -115,7 +115,7 @@ gaspr / %%%%%%%%%%%%%%%%%%%%%%%%% Add gas production %%%%%%%%%%%%%%%%%%%%%%%%%%%
 _TEMPLATE_PURR = """
 purr / %%%%%%%%%%%%%%%%%%%%%%%% Add probability tables %%%%%%%%%%%%%%%%%%%%%%%%%
 {nendf} {npurr_in} {npurr} /
-{mat} {num_temp} 1 20 64 /
+{mat} {num_temp} 1 20 100 /
 {temps}
 1.e10
 0/
@@ -139,7 +139,7 @@ thermr / %%%%%%%%%%%%%%%% Add thermal scattering data (free gas) %%%%%%%%%%%%%%%
 {error} {energy_max}
 thermr / %%%%%%%%%%%%%%%% Add thermal scattering data (bound) %%%%%%%%%%%%%%%%%%
 {nthermal_endf} {nthermr2_in} {nthermr2}
-{mat_thermal} {mat} 16 {num_temp} {inelastic} {elastic} {iform} {natom} 222 1/
+{mat_thermal} {mat} 64 {num_temp} {inelastic} {elastic} {iform} {natom} 222 1/
 {temps}
 {error} {energy_max}
 """
@@ -528,6 +528,7 @@ def make_ace_thermal(filename, filename_thermal, temperatures=None,
     items = endf.get_head_record(file_obj)
     items, values = endf.get_list_record(file_obj)
     energy_max = values[3]
+    energy_max = (energy_max if energy_max >= 4 else 4)
     natom = int(values[5])
 
     # Note that the 'iform' parameter is omitted in NJOY 99. We assume that the
